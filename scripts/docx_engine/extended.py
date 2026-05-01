@@ -70,60 +70,124 @@ def read_smartart(doc_path: str) -> str:
 
 # ===================== CHARTS =====================
 
-def read_charts(doc_path: str) -> str:
-    """Detect and describe embedded charts."""
+def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+    """Extract titles, types, and data series from embedded charts."""
     doc, err = load_document(doc_path)
     if err:
         return err
 
-    charts = []
+    charts_data = []
     
     # Check relationships for chart parts
-    for i, rel in enumerate(doc.part.rels.values()):
+    chart_count = 0
+    for rel in doc.part.rels.values():
         if 'chart' in rel.reltype.lower():
-            chart_info = f"  [Chart rel] {rel.target_ref}"
-            
-            # Try to read chart data from the part
             try:
                 chart_part = rel.target_part
                 chart_xml = chart_part._element
                 
-                # Extract chart title
-                chart_ns = 'http://schemas.openxmlformats.org/drawingml/2006/chart'
-                titles = []
-                for t in chart_xml.iter(f'{{{NS["a"]}}}t'):
-                    if t.text:
-                        titles.append(t.text)
+                # Namespaces
+                C = f'{{{NS["c"]}}}'
+                A = f'{{{NS["a"]}}}'
                 
-                if titles:
-                    chart_info += f"\n    Title/Labels: {' | '.join(titles[:20])}"
+                # Extract Title
+                title = ""
+                title_elem = chart_xml.find(f".//{C}title")
+                if title_elem is not None:
+                    texts = [t.text for t in title_elem.iter(f"{A}t") if t.text]
+                    title = " ".join(texts)
                 
-                # Try to identify chart type
-                chart_types = []
+                # Extract Chart Type
+                chart_type = "unknown"
                 for tag in ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart',
                            'doughnutChart', 'radarChart', 'bubbleChart', 'surfaceChart']:
-                    if chart_xml.find(f'.//{{{chart_ns}}}{tag}') is not None:
-                        chart_types.append(tag)
+                    if chart_xml.find(f'.//{C}{tag}') is not None:
+                        chart_type = tag.replace('Chart', '')
+                        break
+
+                # Extract Series Data
+                series_list = []
+                categories = []
                 
-                if chart_types:
-                    chart_info += f"\n    Chart type: {', '.join(chart_types)}"
+                # Every series is a c:ser
+                for ser in chart_xml.findall(f'.//{C}ser'):
+                    # Series Name
+                    ser_name = ""
+                    tx = ser.find(f'{C}tx')
+                    if tx is not None:
+                        # Could be a string reference or literal value
+                        v = tx.find(f'.//{C}v')
+                        if v is not None:
+                            ser_name = v.text or ""
                     
+                    # Series Values
+                    ser_values = []
+                    val_node = ser.find(f'{C}val')
+                    if val_node is not None:
+                        for v in val_node.findall(f'.//{C}v'):
+                            if v.text:
+                                try:
+                                    # Convert to number if possible
+                                    num = float(v.text)
+                                    ser_values.append(int(num) if num.is_integer() else num)
+                                except (ValueError, TypeError):
+                                    ser_values.append(v.text)
+                    
+                    # Categories (only once or per series, usually shared)
+                    if not categories:
+                        cat_node = ser.find(f'{C}cat')
+                        if cat_node is not None:
+                            for v in cat_node.findall(f'.//{C}v'):
+                                if v.text:
+                                    categories.append(v.text)
+
+                    series_list.append({
+                        "name": ser_name,
+                        "values": ser_values
+                    })
+
+                charts_data.append({
+                    "index": chart_count,
+                    "title": title,
+                    "type": chart_type,
+                    "series": series_list,
+                    "categories": categories
+                })
+                chart_count += 1
+                
             except Exception as e:
-                chart_info += f"\n    (Details could not be read: {e})"
-            
-            charts.append(chart_info)
+                charts_data.append({
+                    "index": chart_count,
+                    "error": str(e),
+                    "target": rel.target_ref
+                })
+                chart_count += 1
 
-    # Check for chart references in body
-    body = doc.element.body
-    chart_ns = 'http://schemas.openxmlformats.org/drawingml/2006/chart'
-    for gd in body.iter(f'{{{NS["a"]}}}graphicData'):
-        uri = gd.get('uri', '')
-        if 'chart' in uri.lower():
-            charts.append(f"  [Chart inline] URI: {uri}")
-
-    if not charts:
+    if not charts_data:
         return errors.err("extended", "read_charts", "No charts found in document.")
-    return "=== CHARTS ===\n" + "\n".join(charts)
+
+    if json_mode:
+        return {"status": "SUCCESS", "charts": charts_data}
+
+    # Text rendering
+    lines = ["=== CHARTS ==="]
+    for c in charts_data:
+        if "error" in c:
+            lines.append(f"  [Chart#{c['index']}] Error: {c['error']}")
+            continue
+            
+        lines.append(f"  [Chart#{c['index']}] Title: {c['title'] or '(No Title)'}")
+        lines.append(f"    Type: {c['type']}")
+        if c['categories']:
+            lines.append(f"    Categories: {', '.join(map(str, c['categories']))}")
+        
+        for ser in c['series']:
+            vals_preview = ", ".join(map(str, ser['values'][:10]))
+            if len(ser['values']) > 10:
+                vals_preview += " ..."
+            lines.append(f"    Series '{ser['name']}': [{vals_preview}]")
+    
+    return "\n".join(lines)
 
 
 # ===================== EMBEDDED / OLE OBJECTS =====================

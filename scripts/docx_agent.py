@@ -623,7 +623,7 @@ def main():
         elif action == "read_smartart":
             result = extended.read_smartart(file_path)
         elif action == "read_charts":
-            result = extended.read_charts(file_path)
+            result = extended.read_charts(file_path, json_mode=args.json)
         elif action == "list_embedded":
             result = extended.list_embedded_objects(file_path)
         elif action == "read_content_controls":
