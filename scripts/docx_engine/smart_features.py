@@ -1,7 +1,7 @@
 """Smart features: summary map, page-based reading, format painter, template system, language detection."""
 import re
 import os
-from typing import List, Optional, Dict, Any, Union, Set
+from typing import List, Optional, Dict, Any, Union, Set, Callable
 from docx.shared import Pt, Cm, RGBColor
 from docx.oxml.ns import qn
 from docx_engine.core import load_document, save_document, has_page_break
@@ -234,23 +234,10 @@ def from_template(template_path: str, output_path: str, variables: Optional[str]
             key, val = pair.split("=", 1)
             var_dict[key.strip()] = val.strip()
 
-    replaced_count = 0
+    def replace_fn(paragraphs: List[Any]) -> int:
+        return _replace_in_paragraph_list(paragraphs, var_dict)
 
-    # Replace in all document sections
-    # Main body paragraphs
-    replaced_count += _replace_in_paragraph_list(doc.paragraphs, var_dict)
-
-    # Tables
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                replaced_count += _replace_in_paragraph_list(cell.paragraphs, var_dict)
-
-    # Headers/Footers
-    for section in doc.sections:
-        for hf in [section.header, section.footer]:
-            if hf:
-                replaced_count += _replace_in_paragraph_list(hf.paragraphs, var_dict)
+    replaced_count = _execute_on_every_paragraph(doc, replace_fn)
 
     doc.save(output_path)
     return errors.ok(f"Template applied → {output_path}") + f"\n{replaced_count} variables replaced.\nVariables: {var_dict}"
@@ -262,26 +249,37 @@ def list_template_variables(doc_path: str) -> str:
     if err:
         return err
 
-    variables = set()
+    variables: Set[str] = set()
 
+    def find_fn(paragraphs: List[Any]) -> int:
+        variables.update(_find_variables_in_paragraph_list(paragraphs))
+        return 0
+
+    _execute_on_every_paragraph(doc, find_fn)
+
+    if not variables:
+        return errors.warn("smart_features", "list_template_variables", "No template variables found.")
+    return errors.ok("Found variables: " + ", ".join(sorted(list(variables))))
+
+
+def _execute_on_every_paragraph(doc: Any, fn: Callable[[List[Any]], int]) -> int:
+    """Helper to execute a function on every paragraph list in the document (body, tables, headers/footers)."""
+    total = 0
     # Main body
-    variables.update(_find_variables_in_paragraph_list(doc.paragraphs))
+    total += fn(doc.paragraphs)
 
     # Tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                variables.update(_find_variables_in_paragraph_list(cell.paragraphs))
+                total += fn(cell.paragraphs)
 
     # Headers/Footers
     for section in doc.sections:
         for hf in [section.header, section.footer]:
             if hf:
-                variables.update(_find_variables_in_paragraph_list(hf.paragraphs))
-
-    if not variables:
-        return errors.warn("smart_features", "list_template_variables", "No template variables found.")
-    return errors.ok("Found variables: " + ", ".join(sorted(list(variables))))
+                total += fn(hf.paragraphs)
+    return total
 
 
 def _replace_in_paragraph_list(paragraphs: List[Any], var_dict: Dict[str, str]) -> int:

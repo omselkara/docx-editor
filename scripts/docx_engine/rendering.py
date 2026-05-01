@@ -3,24 +3,16 @@ import os
 import subprocess
 import tempfile
 import shutil
+from typing import List, Optional, Union, Any
 from docx_engine.core import load_document, has_page_break
 from docx_engine.constants import LINES_PER_PAGE, CHARS_PER_LINE
+from docx_engine import errors
 
 
-def render_pages(doc_path, pages=None, output_dir=None, dpi=200):
-    """Convert DOCX to images via LibreOffice -> PDF -> PNG pipeline.
-    
-    Args:
-        doc_path: Path to the .docx file
-        pages: Optional list of page numbers (1-indexed), or None for all
-        output_dir: Where to save PNGs (defaults to same directory as doc)
-        dpi: Resolution (default 200)
-    
-    Returns:
-        List of image paths, or error message.
-    """
+def render_pages(doc_path: str, pages: Optional[List[int]] = None, output_dir: Optional[str] = None, dpi: int = 200) -> str:
+    """Convert DOCX to images via LibreOffice -> PDF -> PNG pipeline."""
     if not os.path.exists(doc_path):
-        return f"ERROR: '{doc_path}' not found."
+        return errors.err("rendering", "render_pages", f"'{doc_path}' not found.")
 
     if output_dir is None:
         output_dir = os.path.dirname(os.path.abspath(doc_path))
@@ -37,7 +29,7 @@ def render_pages(doc_path, pages=None, output_dir=None, dpi=200):
     try:
         from pdf2image import convert_from_path
         
-        kwargs = {'dpi': dpi}
+        kwargs: Any = {'dpi': dpi}
         if pages:
             kwargs['first_page'] = min(pages)
             kwargs['last_page'] = max(pages)
@@ -66,15 +58,14 @@ def render_pages(doc_path, pages=None, output_dir=None, dpi=200):
         return "\n".join(lines)
         
     except ImportError:
-        return ("ERROR: pdf2image library not found.\n"
-                "Installation: pip install pdf2image\n"
-                "Poppler is also required: https://github.com/oschwartz10612/poppler-windows/releases\n\n"
-                + _fallback_text_render(doc_path, pages))
+        reason = "pdf2image library not found. Installation: pip install pdf2image. Poppler is also required."
+        return errors.err("rendering", "render_pages", reason) + "\n\n" + _fallback_text_render(doc_path, pages)
     except Exception as e:
-        return f"ERROR: PDF to image conversion failed: {e}\n\n" + _fallback_text_render(doc_path, pages)
+        reason = f"PDF to image conversion failed: {e}"
+        return errors.err("rendering", "render_pages", reason) + "\n\n" + _fallback_text_render(doc_path, pages)
 
 
-def _convert_to_pdf(doc_path, output_dir):
+def _convert_to_pdf(doc_path: str, output_dir: str) -> Optional[str]:
     """Convert DOCX to PDF using LibreOffice."""
     import shutil as _shutil
     # Try common LibreOffice paths on Windows + PATH lookup
@@ -110,7 +101,7 @@ def _convert_to_pdf(doc_path, output_dir):
         return None
 
 
-def _fallback_text_render(doc_path, pages=None):
+def _fallback_text_render(doc_path: str, pages: Optional[List[int]] = None) -> str:
     """Create a detailed text representation of the document layout when visual rendering is unavailable."""
     doc, err = load_document(doc_path)
     if err:
@@ -173,8 +164,9 @@ def _fallback_text_render(doc_path, pages=None):
             lines.append(f"{'='*60}")
 
         if style.startswith('Heading'):
-            level = style.replace('Heading ', '').strip()
-            lines.append(f"  [P{i}] {'#' * int(level) if level.isdigit() else '#'} {text}")
+            level_str = style.replace('Heading ', '').strip()
+            level = int(level_str) if level_str.isdigit() else 1
+            lines.append(f"  [P{i}] {'#' * level} {text}")
         elif text:
             lines.append(f"  [P{i}] {text}")
         else:
@@ -190,7 +182,7 @@ def _fallback_text_render(doc_path, pages=None):
     return "\n".join(lines)
 
 
-def describe_layout(doc_path):
+def describe_layout(doc_path: str) -> str:
     """Provide a comprehensive layout description for the LLM to understand the visual structure."""
     doc, err = load_document(doc_path)
     if err:
@@ -204,7 +196,7 @@ def describe_layout(doc_path):
         lines.append(f"\n--- Section {s_idx} ---")
         
         # Page dimensions in cm
-        def emu_to_cm(emu):
+        def emu_to_cm(emu: int) -> float:
             return round(emu / 360000, 2) if emu else 0
 
         lines.append(f"  Page: {emu_to_cm(section.page_width)}x{emu_to_cm(section.page_height)} cm")

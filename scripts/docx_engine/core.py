@@ -2,11 +2,14 @@
 import os
 import json
 import logging
+from typing import Tuple, Optional, Any, Dict, Union
 from docx import Document
+from docx.document import Document as DocumentType
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.shared import Inches, Pt, Cm, Emu
 from docx.oxml.ns import qn
 from lxml import etree
+from docx_engine import errors
 
 NSMAP = {
     'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
@@ -33,29 +36,29 @@ if not logger.handlers:
     logger.setLevel(logging.WARNING)
 
 
-def load_document(doc_path):
+def load_document(doc_path: str) -> Tuple[Optional[DocumentType], Optional[str]]:
     if not os.path.exists(doc_path):
-        return None, f"ERROR: File '{doc_path}' not found."
+        return None, errors.err("core", "load_document", f"File '{doc_path}' not found.")
     try:
         doc = Document(doc_path)
         return doc, None
     except Exception as e:
-        return None, f"ERROR: Could not open file: {e}"
+        return None, errors.err("core", "load_document", f"Could not open file: {e}")
 
 
-def create_document(doc_path):
+def create_document(doc_path: str) -> str:
     doc = Document()
     doc.save(doc_path)
-    return f"SUCCESS: New blank document created: {doc_path}"
+    return errors.ok(f"New blank document created: {doc_path}")
 
 
-def save_document(doc, doc_path, output_path=None):
+def save_document(doc: DocumentType, doc_path: str, output_path: Optional[str] = None) -> str:
     save_path = output_path if output_path else doc_path
     doc.save(save_path)
-    return f"SUCCESS: Document saved: {save_path}"
+    return errors.ok(f"Document saved: {save_path}")
 
 
-def get_info(doc_path, json_mode=False):
+def get_info(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -110,7 +113,7 @@ def get_info(doc_path, json_mode=False):
     return "\n".join(lines)
 
 
-def set_metadata(doc_path, output_path=None, **kwargs):
+def set_metadata(doc_path: str, output_path: Optional[str] = None, **kwargs: Any) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -129,12 +132,12 @@ def set_metadata(doc_path, output_path=None, **kwargs):
             updated.append(key)
 
     if not updated:
-        return "WARNING: No metadata fields specified for update."
+        return errors.warn("core", "set_metadata", "No metadata fields specified for update.")
 
     return save_document(doc, doc_path, output_path) + f"\nUpdated fields: {', '.join(updated)}"
 
 
-def has_page_break(paragraph) -> bool:
+def has_page_break(paragraph: Any) -> bool:
     """Detect if a paragraph contains a hard page break."""
     if paragraph.paragraph_format.page_break_before:
         return True
@@ -145,4 +148,3 @@ def has_page_break(paragraph) -> bool:
             if br.get(qn('w:type')) == 'page':
                 return True
     return False
-
