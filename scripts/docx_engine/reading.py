@@ -237,12 +237,85 @@ def read_section(doc_path: str, target_heading: str, json_mode: bool = False) ->
     return "\n".join(content)
 
 
-def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:   
+def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, strip_format: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:   
+    # If strip_format is on, we ignore include_formatting
+    actual_include_formatting = include_formatting and not strip_format
+
+    if not actual_include_formatting:
+        # LXML fast path
+        try:
+            # We still need to know the paragraph count for index validation
+            # But wait, python-docx load is the fallback. 
+            # For fast-path, we just parse and return what we find.
+            # If start_idx is negative or out of bounds, we should ideally handle it.
+            
+            with zipfile.ZipFile(doc_path, 'r') as z:
+                xml_data = z.read('word/document.xml')
+            
+            # Simple count first for validation (still faster than full Document load)
+            total_paras = xml_data.count(b'</w:p>')
+            if start_idx < 0 or end_idx >= total_paras or start_idx > end_idx:
+                reason = f"Invalid range. Document contains {total_paras} paragraphs (valid indices: 0–{total_paras-1})."
+                if json_mode:
+                    return {"status": "ERROR", "message": errors.err("reading", "read_range", reason)}
+                return errors.err("reading", "read_range", reason)
+
+            context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
+            
+            paragraphs_data = []
+            lines = [f"=== PARAGRAPH RANGE [{start_idx}-{end_idx}] ==="]
+            
+            total_chars = 0
+            
+            for i, (_, elem) in enumerate(context):
+                if i < start_idx:
+                    elem.clear()
+                    continue
+                if i > end_idx:
+                    break
+                
+                style = "Normal"
+                pPr = elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+                if pPr is not None:
+                    pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+                    if pStyle is not None:
+                        style = pStyle.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val') or "Normal"
+                
+                texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
+                text = "".join([t.text for t in texts if t.text])
+                elem.clear()
+                
+                if json_mode:
+                    paragraphs_data.append({"index": i, "style": style, "text": text})
+                else:
+                    if compact:
+                        prefix = ""
+                        if not strip_format:
+                            h_level = style.replace('Heading','').strip()
+                            prefix = f"H{h_level} " if h_level.isdigit() else ""
+                        line = f"[P{i}]{' ' + prefix if prefix else ' '}{text}"
+                    else:
+                        if strip_format:
+                            line = f"[P{i}] {text}"
+                        else:
+                            line = f"[P{i}] ({style}) {text}"
+                            
+                    total_chars += len(line)
+                    if max_chars and total_chars > max_chars:
+                        lines.append(f"[TRUNCATED at {max_chars} chars]")
+                        break
+                    lines.append(line)
+                    
+            if json_mode:
+                return {"status": "SUCCESS", "paragraphs": paragraphs_data}
+            return "\n".join(lines)
+        except Exception:
+            pass # Fall back
+
     doc, err = load_document(doc_path)
     if err:
         return err
     paras = doc.paragraphs
-    # Fix: valid indices are 0 to len-1
     if start_idx < 0 or end_idx > len(paras) - 1:
         reason = f"Invalid range. Document contains {len(paras)} paragraphs (valid indices: 0–{len(paras)-1})."
         if json_mode:
@@ -256,13 +329,24 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
         para = paras[i]
         style = para.style.name
         text = para.text
-        if include_formatting:
+        
+        if actual_include_formatting:
             runs_info = []
             for r in para.runs:
                 runs_info.append(f"({_run_fmt_verbose(r)})'{r.text}'")
             line = f"[P{i}] ({style}) " + " | ".join(runs_info)
         else:
-            line = f"[P{i}] ({style}) {text}"
+            if compact:
+                prefix = ""
+                if not strip_format:
+                    h_level = style.replace('Heading','').strip()
+                    prefix = f"H{h_level} " if h_level.isdigit() else ""
+                line = f"[P{i}]{' ' + prefix if prefix else ' '}{text}"
+            else:
+                if strip_format:
+                    line = f"[P{i}] {text}"
+                else:
+                    line = f"[P{i}] ({style}) {text}"
         
         if json_mode:
             paragraphs_data.append({"index": i, "style": style, "text": text})
