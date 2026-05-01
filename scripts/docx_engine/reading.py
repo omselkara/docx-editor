@@ -53,6 +53,64 @@ def get_outline(doc_path, json_mode=False):
 
 
 def full_text(doc_path, include_formatting=False, compact=False, max_chars=None, json_mode=False):
+    if not include_formatting:
+        # LXML fast path for massive speedup on large docs
+        import zipfile
+        import io
+        from lxml import etree
+        try:
+            with zipfile.ZipFile(doc_path, 'r') as z:
+                xml_data = z.read('word/document.xml')
+            context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
+            
+            paragraphs_data = []
+            lines = [] if not json_mode else None
+            if not json_mode:
+                lines = ["=== FULL TEXT ==="]
+            
+            total_chars = 0
+            truncated = False
+            
+            for i, (_, elem) in enumerate(context):
+                style = "Normal"
+                pPr = elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
+                if pPr is not None:
+                    pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
+                    if pStyle is not None:
+                        style = pStyle.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val') or "Normal"
+                
+                texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
+                text = "".join([t.text for t in texts if t.text])
+                elem.clear() # Memory optimization
+                
+                if compact and not text.strip():
+                    continue
+                
+                if not compact and not json_mode and not text.strip():
+                    lines.append(f"[P{i}] ({style}) <empty>")
+                    continue
+                
+                if json_mode:
+                    paragraphs_data.append({"index": i, "style": style, "text": text})
+                else:
+                    if compact:
+                        prefix = f"H{style.replace('Heading','').strip()}" if style.startswith('Heading') else ""
+                        line = f"[P{i}]{' '+prefix if prefix else ''} {text}"
+                    else:
+                        line = f"[P{i}] ({style}) {text}"
+                    total_chars += len(line)
+                    if max_chars and total_chars > max_chars:
+                        lines.append(f"[TRUNCATED at {max_chars} chars; use read_range --start {i} to continue]")
+                        truncated = True
+                        break
+                    lines.append(line)
+                    
+            if json_mode:
+                return {"status": "SUCCESS", "paragraphs": paragraphs_data, "truncated": truncated}
+            return "\n".join(lines)
+        except Exception:
+            pass # Fall back to python-docx if fast path fails
+
     doc, err = load_document(doc_path)
     if err:
         return err

@@ -680,7 +680,7 @@ def main():
         err_msg = f"ERROR: Unexpected exception in '{action}': {e}"
         if use_json:
             print(json.dumps({"status": "ERROR", "command": action, "message": err_msg,
-                               "traceback": traceback.format_exc()}, indent=2))
+                               "traceback": traceback.format_exc()}, separators=(',', ':')))
         else:
             print(err_msg)
     finally:

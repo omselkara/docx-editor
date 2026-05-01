@@ -322,4 +322,4 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
 
 def to_json(output_text):
     """Legacy converter: wrap any text output in a simple JSON envelope."""
-    return json.dumps({"status": "SUCCESS", "raw": output_text}, ensure_ascii=False, indent=2)
+    return json.dumps({"status": "SUCCESS", "raw": output_text}, ensure_ascii=False, separators=(',', ':'))
