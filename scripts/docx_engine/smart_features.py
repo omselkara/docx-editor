@@ -1,13 +1,12 @@
 """Smart features: summary map, page-based reading, format painter, template system, language detection."""
 import re
-import os
-from typing import List, Optional, Dict, Any, Union, Set, Callable
-from docx.shared import Pt, Cm, RGBColor
-from docx.oxml.ns import qn
-from docx_engine.core import load_document, save_document, has_page_break
-from docx_engine.constants import LINES_PER_PAGE, CHARS_PER_LINE
-from docx_engine import errors
+from typing import Any, Callable, Dict, List, Optional, Set
 
+from docx.oxml.ns import qn
+
+from docx_engine import errors
+from docx_engine.constants import LINES_PER_PAGE
+from docx_engine.core import has_page_break, load_document, save_document
 
 # ===================== SUMMARY MAP =====================
 
@@ -438,7 +437,7 @@ def word_count(doc_path: str) -> str:
     lines.append(f"  Total characters: {total_chars}")
     lines.append(f"  Table word count: {table_words}")
     lines.append(f"  Grand total: {total_words + table_words}")
-    lines.append(f"\n  Section based:")
+    lines.append("\n  Section based:")
     for sec in section_counts:
         lines.append(f"    [{sec['paras']} paras] {sec['name']}: {sec['words']} words, {sec['chars']} characters")
 

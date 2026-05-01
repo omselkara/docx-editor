@@ -1,12 +1,14 @@
 """Content reading: outline, full_text, read_section, read_range, search."""
-import re
-import json
-import zipfile
 import io
-from typing import List, Dict, Any, Optional, Union
+import re
+import zipfile
+from typing import Any, Dict, Optional, Union
+
 from lxml import etree
-from docx_engine.core import load_document, NSMAP
+
 from docx_engine import errors
+from docx_engine.core import load_document
+
 
 # Compact formatting codes
 def _run_fmt_compact(run: Any) -> str:
@@ -69,15 +71,15 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
             with zipfile.ZipFile(doc_path, 'r') as z:
                 xml_data = z.read('word/document.xml')
             context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
-            
+
             paragraphs_data = []
             lines = []
             if not json_mode:
                 lines = ["=== FULL TEXT ==="]
-            
+
             total_chars = 0
             truncated = False
-            
+
             for i, (_, elem) in enumerate(context):
                 style = "Normal"
                 pPr = elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
@@ -85,18 +87,18 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
                     pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
                     if pStyle is not None:
                         style = pStyle.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val') or "Normal"
-                
+
                 texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
                 text = "".join([t.text for t in texts if t.text])
                 elem.clear() # Memory optimization
-                
+
                 if compact and not text.strip():
                     continue
-                
+
                 if not compact and not json_mode and not text.strip():
                     lines.append(f"[P{i}] ({style}) <empty>")
                     continue
-                
+
                 if json_mode:
                     paragraphs_data.append({"index": i, "style": style, "text": text})
                 else:
@@ -111,14 +113,14 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
                             line = f"[P{i}] {text}"
                         else:
                             line = f"[P{i}] ({style}) {text}"
-                            
+
                     total_chars += len(line)
                     if max_chars and total_chars > max_chars:
                         lines.append(f"[TRUNCATED at {max_chars} chars; use read_range --start {i} to continue]")
                         truncated = True
                         break
                     lines.append(line)
-                    
+
             if json_mode:
                 return {"status": "SUCCESS", "paragraphs": paragraphs_data, "truncated": truncated}
             return "\n".join(lines)
@@ -219,10 +221,10 @@ def read_section(doc_path: str, target_heading: str, json_mode: bool = False) ->
                 current_level = int(level_str) if level_str.isdigit() else 0
                 if current_level <= target_level and current_level > 0:
                     break
-            
+
             content.append(f"[P{i}] {para.text}")
             paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text})
-            
+
             # Optional: handle nested headings
             if para.style.name.startswith('Heading'):
                 content.append(f"--- SECTION: {para.text.strip()} (P{i}) ---")
@@ -237,7 +239,7 @@ def read_section(doc_path: str, target_heading: str, json_mode: bool = False) ->
     return "\n".join(content)
 
 
-def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, strip_format: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:   
+def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, strip_format: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     # If strip_format is on, we ignore include_formatting
     actual_include_formatting = include_formatting and not strip_format
 
@@ -245,13 +247,13 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
         # LXML fast path
         try:
             # We still need to know the paragraph count for index validation
-            # But wait, python-docx load is the fallback. 
+            # But wait, python-docx load is the fallback.
             # For fast-path, we just parse and return what we find.
             # If start_idx is negative or out of bounds, we should ideally handle it.
-            
+
             with zipfile.ZipFile(doc_path, 'r') as z:
                 xml_data = z.read('word/document.xml')
-            
+
             # Simple count first for validation (still faster than full Document load)
             total_paras = xml_data.count(b'</w:p>')
             if start_idx < 0 or end_idx >= total_paras or start_idx > end_idx:
@@ -261,30 +263,30 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
                 return errors.err("reading", "read_range", reason)
 
             context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
-            
+
             paragraphs_data = []
             lines = [f"=== PARAGRAPH RANGE [{start_idx}-{end_idx}] ==="]
-            
+
             total_chars = 0
-            
+
             for i, (_, elem) in enumerate(context):
                 if i < start_idx:
                     elem.clear()
                     continue
                 if i > end_idx:
                     break
-                
+
                 style = "Normal"
                 pPr = elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
                 if pPr is not None:
                     pStyle = pPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pStyle')
                     if pStyle is not None:
                         style = pStyle.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val') or "Normal"
-                
+
                 texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
                 text = "".join([t.text for t in texts if t.text])
                 elem.clear()
-                
+
                 if json_mode:
                     paragraphs_data.append({"index": i, "style": style, "text": text})
                 else:
@@ -299,13 +301,13 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
                             line = f"[P{i}] {text}"
                         else:
                             line = f"[P{i}] ({style}) {text}"
-                            
+
                     total_chars += len(line)
                     if max_chars and total_chars > max_chars:
                         lines.append(f"[TRUNCATED at {max_chars} chars]")
                         break
                     lines.append(line)
-                    
+
             if json_mode:
                 return {"status": "SUCCESS", "paragraphs": paragraphs_data}
             return "\n".join(lines)
@@ -329,7 +331,7 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
         para = paras[i]
         style = para.style.name
         text = para.text
-        
+
         if actual_include_formatting:
             runs_info = []
             for r in para.runs:
@@ -347,7 +349,7 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
                     line = f"[P{i}] {text}"
                 else:
                     line = f"[P{i}] ({style}) {text}"
-        
+
         if json_mode:
             paragraphs_data.append({"index": i, "style": style, "text": text})
         else:
@@ -368,7 +370,7 @@ def search_text(doc_path: str, query: str, context_lines: int = 1, compact: bool
         with zipfile.ZipFile(doc_path, 'r') as z:
             xml_data = z.read('word/document.xml')
         context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
-        
+
         all_texts = []
         for _, elem in context:
             texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
@@ -420,7 +422,7 @@ def search_text(doc_path: str, query: str, context_lines: int = 1, compact: bool
     doc, err = load_document(doc_path)
     if err:
         return err
-    
+
     matches_data = []
     results = []
     paras = doc.paragraphs

@@ -1,16 +1,14 @@
 """Core document operations: create, open, save, info, metadata."""
-import os
-import json
 import logging
+import os
 import zipfile
-from typing import Tuple, Optional, Any, Dict, Union
+from typing import Any, Dict, Optional, Tuple, Union
+
 from docx import Document
 from docx.document import Document as DocumentType
 from docx.opc.exceptions import PackageNotFoundError
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
-from docx.shared import Inches, Pt, Cm, Emu
 from docx.oxml.ns import qn
-from lxml import etree
+
 from docx_engine import errors
 
 NSMAP = {
@@ -82,8 +80,8 @@ def get_info(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any
     footnote_count = len(body.findall('.//w:footnoteReference', NSMAP))
     endnote_count = len(body.findall('.//w:endnoteReference', NSMAP))
     section_count = len(doc.sections)
-    has_headers = any(s.header.is_linked_to_previous == False for s in doc.sections if s.header)
-    has_footers = any(s.footer.is_linked_to_previous == False for s in doc.sections if s.footer)
+    has_headers = any(not s.header.is_linked_to_previous for s in doc.sections if s.header)
+    has_footers = any(not s.footer.is_linked_to_previous for s in doc.sections if s.footer)
 
     info = {
         "file": doc_path,

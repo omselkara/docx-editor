@@ -1,12 +1,11 @@
 """Visual rendering: convert DOCX pages to images so the LLM can 'see' the document."""
 import os
 import subprocess
-import tempfile
-import shutil
-from typing import List, Optional, Union, Any
-from docx_engine.core import load_document, has_page_break
-from docx_engine.constants import LINES_PER_PAGE, CHARS_PER_LINE
+from typing import Any, List, Optional
+
 from docx_engine import errors
+from docx_engine.constants import LINES_PER_PAGE
+from docx_engine.core import has_page_break, load_document
 
 
 def render_pages(doc_path: str, pages: Optional[List[int]] = None, output_dir: Optional[str] = None, dpi: int = 200) -> str:
@@ -28,14 +27,14 @@ def render_pages(doc_path: str, pages: Optional[List[int]] = None, output_dir: O
     # Step 2: Convert PDF pages to PNG images
     try:
         from pdf2image import convert_from_path
-        
+
         kwargs: Any = {'dpi': dpi}
         if pages:
             kwargs['first_page'] = min(pages)
             kwargs['last_page'] = max(pages)
-        
+
         images = convert_from_path(pdf_path, **kwargs)
-        
+
         result_paths = []
         for i, img in enumerate(images):
             page_num = (min(pages) + i) if pages else (i + 1)
@@ -44,19 +43,19 @@ def render_pages(doc_path: str, pages: Optional[List[int]] = None, output_dir: O
             img_path = os.path.join(output_dir, f"{base_name}_page_{page_num}.png")
             img.save(img_path, 'PNG')
             result_paths.append(img_path)
-        
+
         # Clean up PDF
         try:
             os.remove(pdf_path)
         except Exception:
             pass
-        
+
         lines = [f"=== RENDER RESULTS ({len(result_paths)} pages) ==="]
         for p in result_paths:
             lines.append(f"  PAGE: {p}")
         lines.append("\nExamine these image files using your image viewing tool.")
         return "\n".join(lines)
-        
+
     except ImportError:
         reason = "pdf2image library not found. Installation: pip install pdf2image. Poppler is also required."
         return errors.err("rendering", "render_pages", reason) + "\n\n" + _fallback_text_render(doc_path, pages)
@@ -89,11 +88,11 @@ def _convert_to_pdf(doc_path: str, output_dir: str) -> Optional[str]:
             lo_exe, '--headless', '--convert-to', 'pdf',
             '--outdir', output_dir, doc_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        
+        subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
         base_name = os.path.splitext(os.path.basename(doc_path))[0]
         pdf_path = os.path.join(output_dir, f"{base_name}.pdf")
-        
+
         if os.path.exists(pdf_path):
             return pdf_path
         return None
@@ -118,13 +117,13 @@ def _fallback_text_render(doc_path: str, pages: Optional[List[int]] = None) -> s
         lines.append(f"--- Section {s_idx}: {orient} | Size: {w}x{h} emu ---")
         lines.append(f"    Margins: top={section.top_margin}, bottom={section.bottom_margin}, "
                      f"left={section.left_margin}, right={section.right_margin}")
-        
+
         # Header
         if section.header and not section.header.is_linked_to_previous:
             h_text = " | ".join(p.text for p in section.header.paragraphs if p.text.strip())
             if h_text:
                 lines.append(f"    [HEADER] {h_text}")
-        
+
         # Footer
         if section.footer and not section.footer.is_linked_to_previous:
             f_text = " | ".join(p.text for p in section.footer.paragraphs if p.text.strip())
@@ -194,7 +193,7 @@ def describe_layout(doc_path: str) -> str:
 
     for s_idx, section in enumerate(doc.sections):
         lines.append(f"\n--- Section {s_idx} ---")
-        
+
         # Page dimensions in cm
         def emu_to_cm(emu: int) -> float:
             return round(emu / 360000, 2) if emu else 0
@@ -218,17 +217,17 @@ def describe_layout(doc_path: str) -> str:
 
         # Different first page header/footer
         if section.different_first_page_header_footer:
-            lines.append(f"  Different first page header/footer: Yes")
+            lines.append("  Different first page header/footer: Yes")
 
     # Content structure overview
-    lines.append(f"\n--- Content Structure ---")
-    
+    lines.append("\n--- Content Structure ---")
+
     # Count element types
     body = doc.element.body
     inline_imgs = len(list(body.iter(_qn('wp:inline'))))
     anchor_imgs = len(list(body.iter(_qn('wp:anchor'))))
     textboxes = len(list(body.iter(_qn('w:txbxContent'))))
-    
+
     lines.append(f"  Paragraph count: {len(doc.paragraphs)}")
     lines.append(f"  Table count: {len(doc.tables)}")
     lines.append(f"  Inline image: {inline_imgs}")

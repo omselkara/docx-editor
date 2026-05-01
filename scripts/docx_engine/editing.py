@@ -3,11 +3,9 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from docx import Document
-from docx.shared import Pt
-from docx.oxml.ns import qn
-from docx_engine.core import load_document, save_document
+
 from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 
 def insert_paragraph(
@@ -23,7 +21,7 @@ def insert_paragraph(
         return err
 
     if after_heading:
-        for i, para in enumerate(doc.paragraphs):
+        for _i, para in enumerate(doc.paragraphs):
             if para.style.name.startswith("Heading") and after_heading.lower() in para.text.lower():
                 new_p = doc.add_paragraph(text, style=style)
                 para._p.addnext(new_p._p)

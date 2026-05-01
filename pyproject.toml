@@ -48,8 +48,16 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "E701",  # multiple statements on one line — intentional compact style in engine
+    "E702",  # multiple statements (semicolon) — intentional in CLI/argparse chains
     "B008",  # function call in default argument
+    "UP006", # use built-in generics — codebase uses typing.List/Dict intentionally
+    "UP035", # deprecated typing imports — consistent with UP006 decision
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI entry point: additional relaxation for compact argparse boilerplate
+"scripts/docx_agent.py" = ["I001", "F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["docx_engine"]

@@ -1,14 +1,11 @@
 """Extended elements: SmartArt, Charts, OLE objects, content controls, protection, watermarks."""
-import os
-import base64
-from typing import List, Optional, Dict, Any, Union, Tuple
-from lxml import etree
-from docx.oxml.ns import qn, nsdecls
-from docx.oxml import parse_xml
-from docx.shared import Pt, Cm, RGBColor
-from docx_engine.core import load_document, save_document
-from docx_engine import errors
+from typing import Any, Dict, Optional, Union
 
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls, qn
+
+from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 # Namespace URIs not in python-docx's built-in map
 NS = {
@@ -38,9 +35,9 @@ def read_smartart(doc_path: str) -> str:
         return err
 
     smartarts = []
-    
+
     # Check relationships for diagram parts
-    for i, rel in enumerate(doc.part.rels.values()):
+    for rel in doc.part.rels.values():
         if 'diagramData' in rel.reltype or 'diagramLayout' in rel.reltype:
             smartarts.append(f"  [SmartArt rel] {rel.reltype.split('/')[-1]}: {rel.target_ref}")
 
@@ -77,7 +74,7 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
         return err
 
     charts_data = []
-    
+
     # Check relationships for chart parts
     chart_count = 0
     for rel in doc.part.rels.values():
@@ -85,18 +82,18 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
             try:
                 chart_part = rel.target_part
                 chart_xml = chart_part._element
-                
+
                 # Namespaces
                 C = f'{{{NS["c"]}}}'
                 A = f'{{{NS["a"]}}}'
-                
+
                 # Extract Title
                 title = ""
                 title_elem = chart_xml.find(f".//{C}title")
                 if title_elem is not None:
                     texts = [t.text for t in title_elem.iter(f"{A}t") if t.text]
                     title = " ".join(texts)
-                
+
                 # Extract Chart Type
                 chart_type = "unknown"
                 for tag in ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart',
@@ -108,7 +105,7 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
                 # Extract Series Data
                 series_list = []
                 categories = []
-                
+
                 # Every series is a c:ser
                 for ser in chart_xml.findall(f'.//{C}ser'):
                     # Series Name
@@ -119,7 +116,7 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
                         v = tx.find(f'.//{C}v')
                         if v is not None:
                             ser_name = v.text or ""
-                    
+
                     # Series Values
                     ser_values = []
                     val_node = ser.find(f'{C}val')
@@ -132,7 +129,7 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
                                     ser_values.append(int(num) if num.is_integer() else num)
                                 except (ValueError, TypeError):
                                     ser_values.append(v.text)
-                    
+
                     # Categories (only once or per series, usually shared)
                     if not categories:
                         cat_node = ser.find(f'{C}cat')
@@ -154,7 +151,7 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
                     "categories": categories
                 })
                 chart_count += 1
-                
+
             except Exception as e:
                 charts_data.append({
                     "index": chart_count,
@@ -175,18 +172,18 @@ def read_charts(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
         if "error" in c:
             lines.append(f"  [Chart#{c['index']}] Error: {c['error']}")
             continue
-            
+
         lines.append(f"  [Chart#{c['index']}] Title: {c['title'] or '(No Title)'}")
         lines.append(f"    Type: {c['type']}")
         if c['categories']:
             lines.append(f"    Categories: {', '.join(map(str, c['categories']))}")
-        
+
         for ser in c['series']:
             vals_preview = ", ".join(map(str, ser['values'][:10]))
             if len(ser['values']) > 10:
                 vals_preview += " ..."
             lines.append(f"    Series '{ser['name']}': [{vals_preview}]")
-    
+
     return "\n".join(lines)
 
 
@@ -199,7 +196,7 @@ def list_embedded_objects(doc_path: str) -> str:
         return err
 
     objects = []
-    
+
     # Check relationships for OLE objects
     for i, rel in enumerate(doc.part.rels.values()):
         reltype = rel.reltype.lower()
@@ -268,7 +265,7 @@ def read_content_controls(doc_path: str) -> str:
         sdt_pr = sdt.find(qn('w:sdtPr'))
         tag_elem = sdt_pr.find(qn('w:tag')) if sdt_pr is not None else None
         alias_elem = sdt_pr.find(qn('w:alias')) if sdt_pr is not None else None
-        
+
         tag = tag_elem.get(qn('w:val'), '') if tag_elem is not None else ''
         alias = alias_elem.get(qn('w:val'), '') if alias_elem is not None else ''
 
@@ -421,7 +418,7 @@ def remove_watermark(doc_path: str, output_path: Optional[str] = None) -> str:
 
     removed = 0
     vml_ns = 'urn:schemas-microsoft-com:vml'
-    
+
     for section in doc.sections:
         if section.header:
             for para in list(section.header._element.iter(qn('w:p'))):

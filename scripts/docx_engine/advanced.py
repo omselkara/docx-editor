@@ -1,13 +1,14 @@
 """Advanced features: images, headers/footers, page layout, lists, hyperlinks, page breaks, TOC."""
 import os
-from typing import List, Optional, Dict, Any, Union
-from docx.shared import Inches, Pt, Cm, Emu
-from docx.enum.section import WD_ORIENT
-from docx.oxml.ns import qn, nsdecls
-from docx.oxml import parse_xml
-from docx_engine.core import load_document, save_document, NSMAP
-from docx_engine import errors
+from typing import Any, Optional
 
+from docx.enum.section import WD_ORIENT
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
+from docx.shared import Cm, Inches, Pt
+
+from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 # ===================== IMAGES =====================
 

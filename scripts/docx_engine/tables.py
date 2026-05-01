@@ -1,13 +1,14 @@
 """Table operations: create, read, modify, format, merge, add/delete rows/columns."""
-import json
-from typing import List, Optional, Dict, Any, Union
-from docx.shared import Inches, Pt, Cm, RGBColor
-from docx.oxml.ns import qn, nsdecls
-from docx.oxml import parse_xml
-from lxml import etree
+from typing import Any, Dict, Optional, Union
+
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx_engine.core import load_document, save_document
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls, qn
+from docx.shared import Pt
+from lxml import etree
+
 from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 
 def list_tables(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
@@ -153,7 +154,7 @@ def add_column(doc_path: str, table_index: int, header: str = "", output_path: O
         return errors.err("tables", "add_column", "Invalid table index.")
     table = doc.tables[table_index]
 
-    for r_idx, row in enumerate(table.rows):
+    for row in table.rows:
         # Clone the last cell's XML element as template, clear its content
         last_tc = row.cells[-1]._tc
         new_tc = etree.fromstring(etree.tostring(last_tc))  # deep copy

@@ -1,13 +1,14 @@
 """Character and paragraph formatting."""
-import re
 import functools
-from typing import List, Optional, Dict, Any, Union
-from docx.shared import Pt, RGBColor, Inches, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+import re
+from typing import Any, Dict, List, Optional, Union
+
 from docx.enum.style import WD_STYLE_TYPE
-from docx.oxml.ns import qn
-from docx_engine.core import load_document, save_document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Cm, Pt, RGBColor
+
 from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 ALIGN_MAP = {
     'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER,

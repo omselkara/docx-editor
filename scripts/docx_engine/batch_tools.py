@@ -1,13 +1,14 @@
 """Batch processing, diff/undo, document comparison — all in-process (no subprocess)."""
-import os
-import json
-import time
-import shutil
 import datetime
-from typing import List, Optional, Dict, Any, Union
-from docx_engine.core import load_document
-from docx_engine.constants import LCS_PARAGRAPH_CAP, BACKUP_SUFFIXES, MAX_BACKUP_COUNT
+import json
+import os
+import shutil
+import time
+from typing import Any, Dict, List, Optional, Union
+
 from docx_engine import errors
+from docx_engine.constants import BACKUP_SUFFIXES, LCS_PARAGRAPH_CAP
+from docx_engine.core import load_document
 
 # ===================== BACKUP / UNDO =====================
 
@@ -96,7 +97,7 @@ def diff_documents(doc_path1: str, doc_path2: str, json_mode: bool = False) -> U
     lines.append(f"  File 1: {doc_path1} ({len(paras1)} paragraphs)")
     lines.append(f"  File 2: {doc_path2} ({len(paras2)} paragraphs)")
     lines.append(f"  Total differences: {len(changes)}")
-    lines.append(f"\n  [+] Added | [-] Deleted | [~] Style changed\n")
+    lines.append("\n  [+] Added | [-] Deleted | [~] Style changed\n")
     for c in changes:
         lines.append(f"  [{c['type']}] {c.get('info', '')}")
     return "\n".join(lines)
@@ -106,8 +107,6 @@ def _lcs_diff(paras1: List[tuple], paras2: List[tuple]) -> List[Dict[str, Any]]:
     """Produce a diff using standard LCS on paragraph text."""
     texts1 = [p[0] for p in paras1]
     texts2 = [p[0] for p in paras2]
-    n, m = len(texts1), len(texts2)
-
     # Build LCS table (space-optimized for large docs)
     cap = LCS_PARAGRAPH_CAP
     t1 = texts1[:cap]
@@ -150,7 +149,15 @@ def _lcs_diff(paras1: List[tuple], paras2: List[tuple]) -> List[Dict[str, Any]]:
 
 def _build_dispatch() -> Dict[str, Any]:
     """Lazily build dispatch table to avoid circular imports at module load."""
-    from docx_engine import editing, formatting, tables, annotations, advanced, smart_features, extended
+    from docx_engine import (
+        advanced,
+        annotations,
+        editing,
+        extended,
+        formatting,
+        smart_features,
+        tables,
+    )
 
     return {
         # Editing
@@ -216,7 +223,7 @@ def batch_execute(doc_path: str, commands_json_path: str, dry_run: bool = False,
     if not os.path.exists(commands_json_path):
         return errors.err("batch_tools", "batch_execute", f"Command file not found: {commands_json_path}")
 
-    with open(commands_json_path, 'r', encoding='utf-8') as f:
+    with open(commands_json_path, encoding='utf-8') as f:
         payload = json.load(f)
 
     # Support both bare list and envelope format

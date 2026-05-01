@@ -1,12 +1,12 @@
 """Comments, footnotes, endnotes, tracked changes, and bookmarks — full annotation support."""
 import datetime
-from typing import List, Optional, Dict, Any, Union
-from lxml import etree
-from docx.oxml.ns import qn, nsdecls
-from docx.oxml import parse_xml
-from docx_engine.core import load_document, save_document, NSMAP
-from docx_engine import errors
+from typing import Any, Optional, Union
 
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls, qn
+
+from docx_engine import errors
+from docx_engine.core import load_document, save_document
 
 # ===================== COMMENTS =====================
 
@@ -112,15 +112,15 @@ def add_comment(doc_path: str, para_index: int, comment_text: str, author: str =
 
     # If no comments part exists, create one
     if comments_part is None:
-        from docx.opc.part import Part
         from docx.opc.packuri import PackURI
+        from docx.opc.part import Part
         comments_xml_bytes = (
             f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             f'<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
             f'<w:comment w:id="{comment_id}" w:author="{author}" w:date="{now}" w:initials="{initials}">'
             f'<w:p><w:r><w:t xml:space="preserve">{comment_text}</w:t></w:r></w:p>'
             f'</w:comment></w:comments>'
-        ).encode('utf-8')
+        ).encode()
         comments_part = Part(
             PackURI('/word/comments.xml'),
             'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml',
