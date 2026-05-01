@@ -4,11 +4,14 @@ import json
 import time
 import shutil
 import datetime
+from typing import List, Optional, Dict, Any, Union
 from docx_engine.core import load_document
+from docx_engine.constants import LCS_PARAGRAPH_CAP, BACKUP_SUFFIXES, MAX_BACKUP_COUNT
+from docx_engine import errors
 
 # ===================== BACKUP / UNDO =====================
 
-def create_backup(doc_path):
+def create_backup(doc_path: str) -> Optional[str]:
     """Create a rolling backup (up to 3 snapshots)."""
     if not os.path.exists(doc_path):
         return None
@@ -27,11 +30,11 @@ def create_backup(doc_path):
     return backup_path
 
 
-def undo(doc_path):
+def undo(doc_path: str) -> str:
     """Restore the most recent backup."""
     backup_path = doc_path + ".bak"
     if not os.path.exists(backup_path):
-        return "ERROR: Backup file not found. Cannot undo."
+        return errors.err("batch_tools", "undo", "Backup file not found. Cannot undo.")
     shutil.copy2(backup_path, doc_path)
     for i in range(1, 4):
         old = f"{doc_path}.bak{i}"
@@ -39,20 +42,20 @@ def undo(doc_path):
             shutil.copy2(old, backup_path)
             os.remove(old)
             break
-    return f"SUCCESS: Document restored: {doc_path}"
+    return errors.ok(f"Document restored: {doc_path}")
 
 
-def list_backups(doc_path):
+def list_backups(doc_path: str) -> str:
     """List all available backups for a document."""
     backups = []
-    for suffix in ['.bak', '.bak1', '.bak2', '.bak3']:
+    for suffix in BACKUP_SUFFIXES:
         path = doc_path + suffix
         if os.path.exists(path):
             stat = os.stat(path)
             mod_time = datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
             backups.append({"path": path, "size_bytes": stat.st_size, "modified": mod_time})
     if not backups:
-        return "ERROR: No backup files found."
+        return errors.err("batch_tools", "list_backups", "No backup files found.")
     lines = ["=== BACKUPS ==="]
     for b in backups:
         lines.append(f"  {b['path']} ({b['size_bytes']} bytes, {b['modified']})")
@@ -61,7 +64,7 @@ def list_backups(doc_path):
 
 # ===================== DIFF (Document Comparison) =====================
 
-def diff_documents(doc_path1, doc_path2, json_mode=False):
+def diff_documents(doc_path1: str, doc_path2: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     """Compare two DOCX documents paragraph by paragraph using a proper LCS diff."""
     doc1, err1 = load_document(doc_path1)
     if err1:
@@ -87,7 +90,7 @@ def diff_documents(doc_path1, doc_path2, json_mode=False):
         }
 
     if not changes:
-        return "SUCCESS: Documents are identical (no paragraph-level differences found)."
+        return errors.ok("Documents are identical (no paragraph-level differences found).")
 
     lines = ["=== DOCUMENT COMPARISON ==="]
     lines.append(f"  File 1: {doc_path1} ({len(paras1)} paragraphs)")
@@ -99,14 +102,14 @@ def diff_documents(doc_path1, doc_path2, json_mode=False):
     return "\n".join(lines)
 
 
-def _lcs_diff(paras1, paras2):
+def _lcs_diff(paras1: List[tuple], paras2: List[tuple]) -> List[Dict[str, Any]]:
     """Produce a diff using standard LCS on paragraph text."""
     texts1 = [p[0] for p in paras1]
     texts2 = [p[0] for p in paras2]
     n, m = len(texts1), len(texts2)
 
-    # Build LCS table (space-optimized for large docs: cap at 500 paras each)
-    cap = 500
+    # Build LCS table (space-optimized for large docs)
+    cap = LCS_PARAGRAPH_CAP
     t1 = texts1[:cap]
     t2 = texts2[:cap]
     n2, m2 = len(t1), len(t2)
@@ -145,7 +148,7 @@ def _lcs_diff(paras1, paras2):
 
 # ===================== IN-PROCESS BATCH EXECUTOR =====================
 
-def _build_dispatch():
+def _build_dispatch() -> Dict[str, Any]:
     """Lazily build dispatch table to avoid circular imports at module load."""
     from docx_engine import editing, formatting, tables, annotations, advanced, smart_features, extended
 
@@ -198,7 +201,7 @@ def _build_dispatch():
     }
 
 
-def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
+def batch_execute(doc_path: str, commands_json_path: str, dry_run: bool = False, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     """Execute multiple commands from a JSON file — in-process, atomic, with rollback.
 
     JSON format:
@@ -211,7 +214,7 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
     }
     """
     if not os.path.exists(commands_json_path):
-        return f"ERROR: Command file not found: {commands_json_path}"
+        return errors.err("batch_tools", "batch_execute", f"Command file not found: {commands_json_path}")
 
     with open(commands_json_path, 'r', encoding='utf-8') as f:
         payload = json.load(f)
@@ -224,10 +227,10 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
         commands = payload.get("commands", [])
         global_on_error = payload.get("on_error", "stop")
     else:
-        return "ERROR: JSON must be a list of commands or an object with 'commands' key."
+        return errors.err("batch_tools", "batch_execute", "JSON must be a list of commands or an object with 'commands' key.")
 
     if not commands:
-        return "WARNING: No commands to execute."
+        return errors.warn("batch_tools", "batch_execute", "No commands to execute.")
 
     dispatch = _build_dispatch()
 
@@ -249,7 +252,7 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
 
         if action not in dispatch:
             status = "ERROR"
-            msg = f"Unknown action: '{action}'. Available: {', '.join(sorted(dispatch.keys())[:10])}..."
+            msg = errors.err("batch_tools", "execute", f"Unknown action: '{action}'.")
             failed += 1
         else:
             fn = dispatch[action]
@@ -270,12 +273,12 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
             except TypeError as e:
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
                 status = "ERROR"
-                msg = f"Argument error in '{action}': {e}"
+                msg = errors.err("batch_tools", "execute", f"Argument error in '{action}': {e}")
                 failed += 1
             except Exception as e:
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
                 status = "ERROR"
-                msg = f"Exception in '{action}': {e}"
+                msg = errors.err("batch_tools", "execute", f"Exception in '{action}': {e}")
                 failed += 1
 
         results.append({
@@ -320,6 +323,6 @@ def batch_execute(doc_path, commands_json_path, dry_run=False, json_mode=False):
 
 # ===================== JSON OUTPUT WRAPPER (legacy compat) =====================
 
-def to_json(output_text):
+def to_json(output_text: str) -> str:
     """Legacy converter: wrap any text output in a simple JSON envelope."""
     return json.dumps({"status": "SUCCESS", "raw": output_text}, ensure_ascii=False, separators=(',', ':'))

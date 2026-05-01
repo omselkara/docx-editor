@@ -83,6 +83,7 @@ def main():
     parser.add_argument("--backup", action="store_true", help="Create a backup before write operations.")
     parser.add_argument("--cleanup", action="store_true", help="Auto-delete temp files after execution.")
     parser.add_argument("--verify", action="store_true", help="After write ops, read back affected range to confirm.")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
 
     sub = parser.add_subparsers(dest="action", help="Action to perform")
 
@@ -362,6 +363,11 @@ def main():
     p.add_argument("--compare", required=True, dest="compare_path")
 
     args = parser.parse_args()
+
+    if args.debug:
+        import logging
+        from docx_engine.core import logger
+        logger.setLevel(logging.DEBUG)
 
     if not args.action:
         parser.print_help()

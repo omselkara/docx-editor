@@ -1,14 +1,17 @@
 """Smart features: summary map, page-based reading, format painter, template system, language detection."""
 import re
 import os
+from typing import List, Optional, Dict, Any, Union, Set
 from docx.shared import Pt, Cm, RGBColor
 from docx.oxml.ns import qn
-from docx_engine.core import load_document, save_document
+from docx_engine.core import load_document, save_document, has_page_break
+from docx_engine.constants import LINES_PER_PAGE, CHARS_PER_LINE
+from docx_engine import errors
 
 
 # ===================== SUMMARY MAP =====================
 
-def summary_map(doc_path):
+def summary_map(doc_path: str) -> str:
     """Create a compact overview of the entire document structure."""
     doc, err = load_document(doc_path)
     if err:
@@ -26,7 +29,7 @@ def summary_map(doc_path):
     # Approximate page tracking
     current_page = 1
     line_count = 0
-    LINES_PER_PAGE = 45
+
     last_page_shown = 0
     empty_streak = 0
 
@@ -35,15 +38,7 @@ def summary_map(doc_path):
         style = para.style.name
 
         # Check for page breaks
-        has_break = False
-        if para.paragraph_format.page_break_before:
-            has_break = True
-        for run in para.runs:
-            for br in run._r.findall(f'.//{qn("w:br")}'):
-                if br.get(qn('w:type')) == 'page':
-                    has_break = True
-
-        if has_break and line_count > 0:
+        if has_page_break(para) and line_count > 0:
             current_page += 1
             line_count = 0
 
@@ -99,7 +94,7 @@ def summary_map(doc_path):
 
 # ===================== PAGE-BASED READING =====================
 
-def read_page(doc_path, page_number):
+def read_page(doc_path: str, page_number: int) -> str:
     """Read content from an approximate page number."""
     doc, err = load_document(doc_path)
     if err:
@@ -107,7 +102,7 @@ def read_page(doc_path, page_number):
 
     current_page = 1
     line_count = 0
-    LINES_PER_PAGE = 45
+
     page_content = []
     capturing = False
 
@@ -116,15 +111,7 @@ def read_page(doc_path, page_number):
         style = para.style.name
 
         # Check for page breaks
-        has_break = False
-        if para.paragraph_format.page_break_before:
-            has_break = True
-        for run in para.runs:
-            for br in run._r.findall(f'.//{qn("w:br")}'):
-                if br.get(qn('w:type')) == 'page':
-                    has_break = True
-
-        if has_break and line_count > 0:
+        if has_page_break(para) and line_count > 0:
             current_page += 1
             line_count = 0
             if capturing:
@@ -145,13 +132,13 @@ def read_page(doc_path, page_number):
                 break
 
     if not page_content:
-        return f"ERROR: Page {page_number} not found. Document is approximately {current_page} pages."
+        return errors.err("smart_features", "read_page", f"Page {page_number} not found. Document is approximately {current_page} pages.")
     return f"=== PAGE {page_number} (approximate) ===\n" + "\n".join(page_content)
 
 
 # ===================== FORMAT PAINTER =====================
 
-def clone_format(doc_path, source_para, target_paras, output_path=None):
+def clone_format(doc_path: str, source_para: int, target_paras: List[int], output_path: Optional[str] = None) -> str:
     """Clone all formatting from source paragraph to target paragraphs."""
     doc, err = load_document(doc_path)
     if err:
@@ -159,7 +146,7 @@ def clone_format(doc_path, source_para, target_paras, output_path=None):
 
     paras = doc.paragraphs
     if source_para >= len(paras):
-        return "ERROR: Invalid source paragraph index."
+        return errors.err("smart_features", "clone_format", "Invalid source paragraph index.")
 
     src = paras[source_para]
 
@@ -226,19 +213,19 @@ def clone_format(doc_path, source_para, target_paras, output_path=None):
                         run.font.small_caps = src_run_fmt['small_caps']
             count += 1
 
-    return save_document(doc, doc_path, output_path) + f"\nFormat cloned from P{source_para} to {count} paragraphs."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Format cloned from P{source_para} to {count} paragraphs.")
 
 
 # ===================== TEMPLATE SYSTEM =====================
 
-def from_template(template_path, output_path, variables=None):
+def from_template(template_path: str, output_path: str, variables: Optional[str] = None) -> str:
     """Create a new document from a template, replacing {{variables}}."""
     doc, err = load_document(template_path)
     if err:
         return err
 
     if not variables:
-        return "ERROR: Variables not specified. Format: key1=value1,key2=value2"
+        return errors.err("smart_features", "from_template", "Variables not specified. Format: key1=value1,key2=value2")
 
     # Parse variables
     var_dict = {}
@@ -249,81 +236,81 @@ def from_template(template_path, output_path, variables=None):
 
     replaced_count = 0
 
-    # Replace in paragraphs
-    for para in doc.paragraphs:
+    # Replace in all document sections
+    # Main body paragraphs
+    replaced_count += _replace_in_paragraph_list(doc.paragraphs, var_dict)
+
+    # Tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                replaced_count += _replace_in_paragraph_list(cell.paragraphs, var_dict)
+
+    # Headers/Footers
+    for section in doc.sections:
+        for hf in [section.header, section.footer]:
+            if hf:
+                replaced_count += _replace_in_paragraph_list(hf.paragraphs, var_dict)
+
+    doc.save(output_path)
+    return errors.ok(f"Template applied → {output_path}") + f"\n{replaced_count} variables replaced.\nVariables: {var_dict}"
+
+
+def list_template_variables(doc_path: str) -> str:
+    """Find all {{variable}} placeholders in a document."""
+    doc, err = load_document(doc_path)
+    if err:
+        return err
+
+    variables = set()
+
+    # Main body
+    variables.update(_find_variables_in_paragraph_list(doc.paragraphs))
+
+    # Tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                variables.update(_find_variables_in_paragraph_list(cell.paragraphs))
+
+    # Headers/Footers
+    for section in doc.sections:
+        for hf in [section.header, section.footer]:
+            if hf:
+                variables.update(_find_variables_in_paragraph_list(hf.paragraphs))
+
+    if not variables:
+        return errors.warn("smart_features", "list_template_variables", "No template variables found.")
+    return errors.ok("Found variables: " + ", ".join(sorted(list(variables))))
+
+
+def _replace_in_paragraph_list(paragraphs: List[Any], var_dict: Dict[str, str]) -> int:
+    """Helper to replace variables in a list of paragraphs."""
+    count = 0
+    for para in paragraphs:
         for key, val in var_dict.items():
             placeholder = "{{" + key + "}}"
             if placeholder in para.text:
                 for run in para.runs:
                     if placeholder in run.text:
                         run.text = run.text.replace(placeholder, val)
-                        replaced_count += 1
-
-    # Replace in tables
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for para in cell.paragraphs:
-                    for key, val in var_dict.items():
-                        placeholder = "{{" + key + "}}"
-                        if placeholder in para.text:
-                            for run in para.runs:
-                                if placeholder in run.text:
-                                    run.text = run.text.replace(placeholder, val)
-                                    replaced_count += 1
-
-    # Replace in headers/footers
-    for section in doc.sections:
-        for header_footer in [section.header, section.footer]:
-            if header_footer:
-                for para in header_footer.paragraphs:
-                    for key, val in var_dict.items():
-                        placeholder = "{{" + key + "}}"
-                        if placeholder in para.text:
-                            for run in para.runs:
-                                if placeholder in run.text:
-                                    run.text = run.text.replace(placeholder, val)
-                                    replaced_count += 1
-
-    doc.save(output_path)
-    return f"SUCCESS: Template applied → {output_path}\n{replaced_count} variables replaced.\nVariables: {var_dict}"
+                        count += 1
+    return count
 
 
-def list_template_variables(doc_path):
-    """Find all {{variable}} placeholders in a document."""
-    doc, err = load_document(doc_path)
-    if err:
-        return err
-
+def _find_variables_in_paragraph_list(paragraphs: List[Any]) -> Set[str]:
+    """Helper to find {{variable}} placeholders in a list of paragraphs."""
     pattern = r'\{\{(\w+)\}\}'
     variables = set()
-
-    for para in doc.paragraphs:
+    for para in paragraphs:
         matches = re.findall(pattern, para.text)
         variables.update(matches)
-
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for para in cell.paragraphs:
-                    matches = re.findall(pattern, para.text)
-                    variables.update(matches)
-
-    for section in doc.sections:
-        for hf in [section.header, section.footer]:
-            if hf:
-                for para in hf.paragraphs:
-                    matches = re.findall(pattern, para.text)
-                    variables.update(matches)
-
-    if not variables:
-        return "No {{variable}} found in the document."
-    return "=== TEMPLATE VARIABLES ===\n" + "\n".join(f"  {{{{{v}}}}}" for v in sorted(variables))
+    return variables
 
 
 # ===================== LANGUAGE DETECTION =====================
 
-def detect_language(doc_path):
+def detect_language(doc_path: str) -> str:
     """Detect the primary language of the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -333,7 +320,7 @@ def detect_language(doc_path):
     all_text = " ".join(p.text for p in doc.paragraphs if p.text.strip())
 
     if not all_text:
-        return "WARNING: Document is empty, language could not be detected."
+        return errors.warn("smart_features", "detect_language", "Document is empty, language could not be detected.")
 
     # Simple heuristic-based detection
     char_count = len(all_text)
@@ -411,7 +398,7 @@ def detect_language(doc_path):
 
 # ===================== WORD COUNT PER SECTION =====================
 
-def word_count(doc_path):
+def word_count(doc_path: str) -> str:
     """Detailed word count broken down by section/heading."""
     doc, err = load_document(doc_path)
     if err:

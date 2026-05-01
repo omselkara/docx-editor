@@ -1,5 +1,11 @@
+# Runtime dependencies
 python-docx>=1.1.0
 lxml>=4.9.0
 Pillow>=10.0
 pdf2image>=1.16
+
+# Development / testing (also declared in pyproject.toml [dev])
 pytest>=7.0.0
+pytest-cov>=4.0
+pytest-benchmark>=4.0
+ruff>=0.4

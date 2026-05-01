@@ -1,9 +1,11 @@
 """Core document operations: create, open, save, info, metadata."""
 import os
 import json
+import logging
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.shared import Inches, Pt, Cm, Emu
+from docx.oxml.ns import qn
 from lxml import etree
 
 NSMAP = {
@@ -20,6 +22,15 @@ NSMAP = {
     'dc': 'http://purl.org/dc/elements/1.1/',
     'dcterms': 'http://purl.org/dc/terms/',
 }
+
+# Configure logging
+logger = logging.getLogger("docx_engine")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    _handler.setFormatter(_formatter)
+    logger.addHandler(_handler)
+    logger.setLevel(logging.WARNING)
 
 
 def load_document(doc_path):
@@ -121,3 +132,17 @@ def set_metadata(doc_path, output_path=None, **kwargs):
         return "WARNING: No metadata fields specified for update."
 
     return save_document(doc, doc_path, output_path) + f"\nUpdated fields: {', '.join(updated)}"
+
+
+def has_page_break(paragraph) -> bool:
+    """Detect if a paragraph contains a hard page break."""
+    if paragraph.paragraph_format.page_break_before:
+        return True
+
+    # Check runs for <w:br w:type="page"/>
+    for run in paragraph.runs:
+        for br in run._r.findall(f'.//{qn("w:br")}'):
+            if br.get(qn('w:type')) == 'page':
+                return True
+    return False
+

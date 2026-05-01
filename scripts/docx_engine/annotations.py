@@ -1,14 +1,16 @@
 """Comments, footnotes, endnotes, tracked changes, and bookmarks — full annotation support."""
 import datetime
+from typing import List, Optional, Dict, Any, Union
 from lxml import etree
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 from docx_engine.core import load_document, save_document, NSMAP
+from docx_engine import errors
 
 
 # ===================== COMMENTS =====================
 
-def read_comments(doc_path):
+def read_comments(doc_path: str) -> str:
     """Read all comments from the document, including author, date, and referenced text."""
     doc, err = load_document(doc_path)
     if err:
@@ -67,7 +69,7 @@ def read_comments(doc_path):
     return "\n".join(lines)
 
 
-def _get_text_between(start_elem, end_elem):
+def _get_text_between(start_elem: Any, end_elem: Any) -> str:
     """Get all text content between two XML elements."""
     text_parts = []
     collecting = False
@@ -82,15 +84,15 @@ def _get_text_between(start_elem, end_elem):
     return ''.join(text_parts)
 
 
-def add_comment(doc_path, para_index, comment_text, author="LLM Agent",
-                initials="LA", start_char=None, end_char=None, output_path=None):
+def add_comment(doc_path: str, para_index: int, comment_text: str, author: str = "LLM Agent",
+                initials: str = "LA", start_char: Optional[int] = None, end_char: Optional[int] = None, output_path: Optional[str] = None) -> str:
     """Add a comment to a paragraph or specific text range."""
     doc, err = load_document(doc_path)
     if err:
         return err
 
     if para_index >= len(doc.paragraphs):
-        return f"ERROR: Invalid paragraph index."
+        return errors.err("annotations", "add_comment", "Invalid paragraph index.")
 
     # Get or create comments part
     comments_part = None
@@ -148,10 +150,10 @@ def add_comment(doc_path, para_index, comment_text, author="LLM Agent",
     para._p.append(range_end)
     para._p.append(comment_ref)
 
-    return save_document(doc, doc_path, output_path) + f"\nComment #{comment_id} added (P{para_index})."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Comment #{comment_id} added (P{para_index}).")
 
 
-def delete_comment(doc_path, comment_id, output_path=None):
+def delete_comment(doc_path: str, comment_id: Union[int, str], output_path: Optional[str] = None) -> str:
     """Delete a comment by its ID."""
     doc, err = load_document(doc_path)
     if err:
@@ -180,12 +182,12 @@ def delete_comment(doc_path, comment_id, output_path=None):
             if run is not None:
                 run.getparent().remove(run)
 
-    return save_document(doc, doc_path, output_path) + f"\nComment #{comment_id} deleted."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Comment #{comment_id} deleted.")
 
 
 # ===================== FOOTNOTES & ENDNOTES =====================
 
-def read_footnotes(doc_path):
+def read_footnotes(doc_path: str) -> str:
     """Read all footnotes from the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -219,7 +221,7 @@ def read_footnotes(doc_path):
     return "\n".join(lines) if len(lines) > 1 else "No footnotes found in the document."
 
 
-def read_endnotes(doc_path):
+def read_endnotes(doc_path: str) -> str:
     """Read all endnotes from the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -253,14 +255,14 @@ def read_endnotes(doc_path):
     return "\n".join(lines) if len(lines) > 1 else "No endnotes found in the document."
 
 
-def add_footnote(doc_path, para_index, footnote_text, output_path=None):
+def add_footnote(doc_path: str, para_index: int, footnote_text: str, output_path: Optional[str] = None) -> str:
     """Add a footnote to a paragraph."""
     doc, err = load_document(doc_path)
     if err:
         return err
 
     if para_index >= len(doc.paragraphs):
-        return "ERROR: Invalid paragraph index."
+        return errors.err("annotations", "add_footnote", "Invalid paragraph index.")
 
     # Get the footnotes part
     footnotes_part = None
@@ -295,12 +297,12 @@ def add_footnote(doc_path, para_index, footnote_text, output_path=None):
     )
     para._p.append(fn_ref_run)
 
-    return save_document(doc, doc_path, output_path) + f"\nFootnote #{fn_id} added (P{para_index})."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Footnote #{fn_id} added (P{para_index}).")
 
 
 # ===================== TRACKED CHANGES =====================
 
-def read_tracked_changes(doc_path):
+def read_tracked_changes(doc_path: str) -> str:
     """Read all tracked changes (insertions, deletions, formatting changes)."""
     doc, err = load_document(doc_path)
     if err:
@@ -346,7 +348,7 @@ def read_tracked_changes(doc_path):
     return f"=== TRACKED CHANGES ({len(changes)} items) ===\n" + "\n\n".join(changes)
 
 
-def accept_all_changes(doc_path, output_path=None):
+def accept_all_changes(doc_path: str, output_path: Optional[str] = None) -> str:
     """Accept all tracked changes in the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -377,10 +379,10 @@ def accept_all_changes(doc_path, output_path=None):
         ppc.getparent().remove(ppc)
         count += 1
 
-    return save_document(doc, doc_path, output_path) + f"\n{count} changes accepted."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{count} changes accepted.")
 
 
-def reject_all_changes(doc_path, output_path=None):
+def reject_all_changes(doc_path: str, output_path: Optional[str] = None) -> str:
     """Reject all tracked changes in the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -405,12 +407,12 @@ def reject_all_changes(doc_path, output_path=None):
         parent.remove(dl)
         count += 1
 
-    return save_document(doc, doc_path, output_path) + f"\n{count} changes rejected."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{count} changes rejected.")
 
 
 # ===================== BOOKMARKS =====================
 
-def list_bookmarks(doc_path):
+def list_bookmarks(doc_path: str) -> str:
     """List all bookmarks in the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -430,14 +432,14 @@ def list_bookmarks(doc_path):
     return "=== BOOKMARKS ===\n" + "\n".join(bookmarks)
 
 
-def add_bookmark(doc_path, para_index, bookmark_name, output_path=None):
+def add_bookmark(doc_path: str, para_index: int, bookmark_name: str, output_path: Optional[str] = None) -> str:
     """Add a bookmark to a paragraph."""
     doc, err = load_document(doc_path)
     if err:
         return err
 
     if para_index >= len(doc.paragraphs):
-        return "ERROR: Invalid paragraph index."
+        return errors.err("annotations", "add_bookmark", "Invalid paragraph index.")
 
     # Find next bookmark ID
     body = doc.element.body
@@ -453,12 +455,12 @@ def add_bookmark(doc_path, para_index, bookmark_name, output_path=None):
     para._p.insert(0, bm_start)
     para._p.append(bm_end)
 
-    return save_document(doc, doc_path, output_path) + f"\nBookmark added: '{bookmark_name}' (P{para_index})."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Bookmark added: '{bookmark_name}' (P{para_index}).")
 
 
 # ===================== TEXT BOXES & SHAPES =====================
 
-def read_textboxes(doc_path):
+def read_textboxes(doc_path: str) -> str:
     """Read all text boxes and shapes in the document."""
     doc, err = load_document(doc_path)
     if err:

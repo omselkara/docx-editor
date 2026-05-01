@@ -1,11 +1,13 @@
 """Extended elements: SmartArt, Charts, OLE objects, content controls, protection, watermarks."""
 import os
 import base64
+from typing import List, Optional, Dict, Any, Union, Tuple
 from lxml import etree
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 from docx.shared import Pt, Cm, RGBColor
 from docx_engine.core import load_document, save_document
+from docx_engine import errors
 
 
 # Namespace URIs not in python-docx's built-in map
@@ -29,7 +31,7 @@ NS = {
 
 # ===================== SMARTART =====================
 
-def read_smartart(doc_path):
+def read_smartart(doc_path: str) -> str:
     """Detect and describe SmartArt diagrams in the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -62,13 +64,13 @@ def read_smartart(doc_path):
             smartarts.append(f"  [Diagram#{i}] URI: {uri}\n    Text: {text_preview}")
 
     if not smartarts:
-        return "ERROR: No SmartArt/Diagram found in document."
+        return errors.err("extended", "read_smartart", "No SmartArt/Diagram found in document.")
     return "=== SMARTART / DIAGRAMS ===\n" + "\n".join(smartarts)
 
 
 # ===================== CHARTS =====================
 
-def read_charts(doc_path):
+def read_charts(doc_path: str) -> str:
     """Detect and describe embedded charts."""
     doc, err = load_document(doc_path)
     if err:
@@ -120,13 +122,13 @@ def read_charts(doc_path):
             charts.append(f"  [Chart inline] URI: {uri}")
 
     if not charts:
-        return "ERROR: No charts found in document."
+        return errors.err("extended", "read_charts", "No charts found in document.")
     return "=== CHARTS ===\n" + "\n".join(charts)
 
 
 # ===================== EMBEDDED / OLE OBJECTS =====================
 
-def list_embedded_objects(doc_path):
+def list_embedded_objects(doc_path: str) -> str:
     """List all embedded OLE objects (Excel, PDF, etc.)."""
     doc, err = load_document(doc_path)
     if err:
@@ -156,11 +158,11 @@ def list_embedded_objects(doc_path):
             objects.append(f"  [EmbObj#{i}] {prog_id}")
 
     if not objects:
-        return "ERROR: No embedded objects found in document."
+        return errors.err("extended", "list_embedded_objects", "No embedded objects found in document.")
     return "=== EMBEDDED OBJECTS (OLE) ===\n" + "\n".join(objects)
 
 
-def extract_embedded(doc_path, rel_index, output_path):
+def extract_embedded(doc_path: str, rel_index: int, output_path: str) -> str:
     """Extract an embedded object by its relationship index."""
     doc, err = load_document(doc_path)
     if err:
@@ -174,21 +176,21 @@ def extract_embedded(doc_path, rel_index, output_path):
             matching.append((i, rel))
 
     if rel_index >= len(matching):
-        return f"ERROR: Invalid embedded object index. {len(matching)} objects exist."
+        return errors.err("extended", "extract_embedded", f"Invalid embedded object index. {len(matching)} objects exist.")
 
     _, rel = matching[rel_index]
     try:
         part = rel.target_part
         with open(output_path, 'wb') as f:
             f.write(part.blob)
-        return f"SUCCESS: Embedded object extracted → {output_path} ({len(part.blob)} bytes)"
+        return errors.ok(f"Embedded object extracted → {output_path} ({len(part.blob)} bytes)")
     except Exception as e:
-        return f"ERROR: Object could not be extracted: {e}"
+        return errors.err("extended", "extract_embedded", f"Object could not be extracted: {e}")
 
 
 # ===================== CONTENT CONTROLS (SDT) =====================
 
-def read_content_controls(doc_path):
+def read_content_controls(doc_path: str) -> str:
     """Read all Structured Document Tags (content controls / form fields)."""
     doc, err = load_document(doc_path)
     if err:
@@ -243,13 +245,13 @@ def read_content_controls(doc_path):
         )
 
     if not controls:
-        return "ERROR: No content controls (form fields) found in document."
+        return errors.err("extended", "read_content_controls", "No content controls (form fields) found in document.")
     return f"=== CONTENT CONTROLS ({len(controls)} items) ===\n" + "\n\n".join(controls)
 
 
 # ===================== DOCUMENT PROTECTION =====================
 
-def read_protection(doc_path):
+def read_protection(doc_path: str) -> str:
     """Read document protection settings."""
     doc, err = load_document(doc_path)
     if err:
@@ -277,7 +279,7 @@ def read_protection(doc_path):
                 pass
 
     if not settings:
-        return "SUCCESS: Document protection not applied."
+        return errors.ok("Document protection not applied.")
 
     protection_types = {
         'readOnly': 'Read Only',
@@ -301,7 +303,7 @@ def read_protection(doc_path):
 
 # ===================== WATERMARK =====================
 
-def add_watermark(doc_path, text, font_size=72, color="#C0C0C0", rotation=-45, output_path=None):
+def add_watermark(doc_path: str, text: str, font_size: int = 72, color: str = "#C0C0C0", rotation: int = -45, output_path: Optional[str] = None) -> str:
     """Add a diagonal text watermark to all pages."""
     doc, err = load_document(doc_path)
     if err:
@@ -336,7 +338,7 @@ def add_watermark(doc_path, text, font_size=72, color="#C0C0C0", rotation=-45, o
             f'string="{text}"/>'
             f'<w10:wrap anchorx="margin" anchory="margin"/>'
             f'</v:shape>'
-            f'</w:pict>'
+            f'</v:pict>'
             f'</w:r>'
             f'</w:p>'
         )
@@ -344,10 +346,10 @@ def add_watermark(doc_path, text, font_size=72, color="#C0C0C0", rotation=-45, o
         watermark_elem = parse_xml(watermark_xml)
         header._element.append(watermark_elem)
 
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Watermark added: '{text}'"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Watermark added: '{text}'")
 
 
-def remove_watermark(doc_path, output_path=None):
+def remove_watermark(doc_path: str, output_path: Optional[str] = None) -> str:
     """Remove watermark from the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -369,13 +371,13 @@ def remove_watermark(doc_path, output_path=None):
                             break
 
     if removed == 0:
-        return "ERROR: No watermark found in document."
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: {removed} watermark(s) removed."
+        return errors.err("extended", "remove_watermark", "No watermark found in document.")
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{removed} watermark(s) removed.")
 
 
 # ===================== LINE NUMBERING =====================
 
-def set_line_numbering(doc_path, start=1, count_by=1, restart='newPage', output_path=None):
+def set_line_numbering(doc_path: str, start: int = 1, count_by: int = 1, restart: str = 'newPage', output_path: Optional[str] = None) -> str:
     """Enable line numbering for the document."""
     doc, err = load_document(doc_path)
     if err:
@@ -399,12 +401,12 @@ def set_line_numbering(doc_path, start=1, count_by=1, restart='newPage', output_
         )
         sectPr.append(ln_num)
 
-    return save_document(doc, doc_path, output_path) + "\nSUCCESS: Line numbering enabled."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok("Line numbering enabled.")
 
 
 # ===================== DOCUMENT STATISTICS =====================
 
-def full_statistics(doc_path):
+def full_statistics(doc_path: str) -> str:
     """Comprehensive document statistics beyond basic word count."""
     doc, err = load_document(doc_path)
     if err:

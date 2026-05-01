@@ -3,7 +3,8 @@ import os
 import subprocess
 import tempfile
 import shutil
-from docx_engine.core import load_document
+from docx_engine.core import load_document, has_page_break
+from docx_engine.constants import LINES_PER_PAGE, CHARS_PER_LINE
 
 
 def render_pages(doc_path, pages=None, output_dir=None, dpi=200):
@@ -144,23 +145,13 @@ def _fallback_text_render(doc_path, pages=None):
     # Approximate page simulation (~45 lines per page)
     current_page = 1
     line_count_on_page = 0
-    LINES_PER_PAGE = 45
 
     for i, para in enumerate(doc.paragraphs):
         text = para.text.strip()
         style = para.style.name
 
         # Check for page breaks
-        has_page_break = False
-        pf = para.paragraph_format
-        if pf.page_break_before:
-            has_page_break = True
-        for run in para.runs:
-            for br in run._r.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}br'):
-                if br.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type') == 'page':
-                    has_page_break = True
-
-        if has_page_break and line_count_on_page > 0:
+        if has_page_break(para) and line_count_on_page > 0:
             current_page += 1
             line_count_on_page = 0
             lines.append(f"\n{'='*60}")

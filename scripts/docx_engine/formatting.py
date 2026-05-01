@@ -1,10 +1,13 @@
 """Character and paragraph formatting."""
 import re
+import functools
+from typing import List, Optional, Dict, Any, Union
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml.ns import qn
 from docx_engine.core import load_document, save_document
+from docx_engine import errors
 
 ALIGN_MAP = {
     'left': WD_ALIGN_PARAGRAPH.LEFT, 'center': WD_ALIGN_PARAGRAPH.CENTER,
@@ -12,10 +15,10 @@ ALIGN_MAP = {
 }
 
 
-def format_text(doc_path, match=None, para_indices=None, bold=None, italic=None,
-                underline=None, strike=None, font_name=None, font_size=None,
-                font_color=None, highlight=None, all_caps=None, small_caps=None,
-                superscript=None, subscript=None, output_path=None):
+def format_text(doc_path: str, match: Optional[str] = None, para_indices: Optional[List[int]] = None, bold: Optional[bool] = None, italic: Optional[bool] = None,
+                underline: Optional[bool] = None, strike: Optional[bool] = None, font_name: Optional[str] = None, font_size: Optional[float] = None,
+                font_color: Optional[str] = None, highlight: Optional[str] = None, all_caps: Optional[bool] = None, small_caps: Optional[bool] = None,
+                superscript: Optional[bool] = None, subscript: Optional[bool] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -38,7 +41,7 @@ def format_text(doc_path, match=None, para_indices=None, bold=None, italic=None,
                         if re.search(match, para.text, re.IGNORECASE):
                             paras_to_format.append(para)
     else:
-        return "ERROR: Either --match or --para-indices must be specified."
+        return errors.err("formatting", "format_text", "Either --match or --para-indices must be specified.")
 
     for para in paras_to_format:
         for run in para.runs:
@@ -50,13 +53,13 @@ def format_text(doc_path, match=None, para_indices=None, bold=None, italic=None,
             count += 1
 
     if count == 0:
-        return "WARNING: No text found to format."
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: {count} runs formatted."
+        return errors.warn("formatting", "format_text", "No text found to format.")
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{count} runs formatted.")
 
 
-def _apply_run_format(run, bold, italic, underline, strike, font_name,
-                      font_size, font_color, highlight, all_caps, small_caps,
-                      superscript, subscript):
+def _apply_run_format(run: Any, bold: Optional[bool], italic: Optional[bool], underline: Optional[bool], strike: Optional[bool], font_name: Optional[str],
+                      font_size: Optional[float], font_color: Optional[str], highlight: Optional[str], all_caps: Optional[bool], small_caps: Optional[bool],
+                      superscript: Optional[bool], subscript: Optional[bool]) -> None:
     if bold is not None: run.bold = bold
     if italic is not None: run.italic = italic
     if underline is not None: run.underline = underline
@@ -82,11 +85,11 @@ def _apply_run_format(run, bold, italic, underline, strike, font_name,
     if subscript is not None: run.font.subscript = subscript
 
 
-def format_paragraph(doc_path, para_indices, alignment=None, line_spacing=None,
-                     space_before=None, space_after=None, left_indent=None,
-                     right_indent=None, first_line_indent=None, keep_together=None,
-                     keep_with_next=None, page_break_before=None,
-                     widow_control=None, output_path=None):
+def format_paragraph(doc_path: str, para_indices: List[int], alignment: Optional[str] = None, line_spacing: Optional[float] = None,
+                     space_before: Optional[float] = None, space_after: Optional[float] = None, left_indent: Optional[float] = None,
+                     right_indent: Optional[float] = None, first_line_indent: Optional[float] = None, keep_together: Optional[bool] = None,
+                     keep_with_next: Optional[bool] = None, page_break_before: Optional[bool] = None,
+                     widow_control: Optional[bool] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -111,11 +114,12 @@ def format_paragraph(doc_path, para_indices, alignment=None, line_spacing=None,
             count += 1
 
     if count == 0:
-        return "WARNING: No paragraphs found at specified indices."
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: {count} paragraphs formatted."
+        return errors.warn("formatting", "format_paragraph", "No paragraphs found at specified indices.")
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{count} paragraphs formatted.")
 
 
-def list_styles(doc_path, style_type=None, json_mode=False):
+@functools.lru_cache(maxsize=32)
+def list_styles(doc_path: str, style_type: Optional[str] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -147,7 +151,7 @@ def list_styles(doc_path, style_type=None, json_mode=False):
     return "\n".join(lines)
 
 
-def apply_style(doc_path, para_indices, style_name, output_path=None):
+def apply_style(doc_path: str, para_indices: List[int], style_name: str, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -158,7 +162,7 @@ def apply_style(doc_path, para_indices, style_name, output_path=None):
                 doc.paragraphs[idx].style = style_name
                 count += 1
             except KeyError:
-                return f"ERROR: Style '{style_name}' not found in document styles."
+                return errors.err("formatting", "apply_style", f"Style '{style_name}' not found in document styles.")
     if count == 0:
-        return "WARNING: No paragraphs found at specified indices."
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: {count} paragraphs applied style '{style_name}'."
+        return errors.warn("formatting", "apply_style", "No paragraphs found at specified indices.")
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{count} paragraphs applied style '{style_name}'.")

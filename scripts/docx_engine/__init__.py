@@ -4,6 +4,8 @@ This package provides modular tools for reading, editing, formatting,
 and rendering Microsoft Word documents.
 """
 
+from . import constants
+from . import errors
 from . import core
 from . import reading
 from . import editing

@@ -1,20 +1,22 @@
 """Advanced features: images, headers/footers, page layout, lists, hyperlinks, page breaks, TOC."""
 import os
+from typing import List, Optional, Dict, Any, Union
 from docx.shared import Inches, Pt, Cm, Emu
 from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 from docx_engine.core import load_document, save_document, NSMAP
+from docx_engine import errors
 
 
 # ===================== IMAGES =====================
 
-def insert_image(doc_path, image_path, width=None, height=None, after_para=None, output_path=None):
+def insert_image(doc_path: str, image_path: str, width: Optional[float] = None, height: Optional[float] = None, after_para: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
     if not os.path.exists(image_path):
-        return f"ERROR: Image file not found: {image_path}"
+        return errors.err("advanced", "insert_image", f"Image file not found: {image_path}")
 
     # Available content area in EMU (page minus margins)
     section = doc.sections[0]
@@ -30,9 +32,9 @@ def insert_image(doc_path, image_path, width=None, height=None, after_para=None,
             dpi = _img.info.get("dpi", (96, 96))
             dpi_x = float(dpi[0]) if isinstance(dpi, (tuple, list)) else 96.0
             dpi_y = float(dpi[1]) if isinstance(dpi, (tuple, list)) else 96.0
-            EMU_PER_INCH = 914400
-            img_w_emu = int(px_w / dpi_x * EMU_PER_INCH)
-            img_h_emu = int(px_h / dpi_y * EMU_PER_INCH)
+            from docx_engine.constants import EMU_PER_INCH as _EMU
+            img_w_emu = int(px_w / dpi_x * _EMU)
+            img_h_emu = int(px_h / dpi_y * _EMU)
     except Exception:
         pass
 
@@ -66,10 +68,10 @@ def insert_image(doc_path, image_path, width=None, height=None, after_para=None,
     else:
         doc.add_picture(image_path, **kwargs)
 
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Image added: {image_path}"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Image added: {image_path}")
 
 
-def list_images(doc_path):
+def list_images(doc_path: str) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -80,18 +82,18 @@ def list_images(doc_path):
             images.append(f"  [IMG{i}] {rel.target_ref} (type: {rel.reltype.split('/')[-1]})")
 
     if not images:
-        return "ERROR: No images found in document."
+        return errors.err("advanced", "list_images", "No images found in document.")
     return "=== IMAGES ===\n" + "\n".join(images)
 
 
 # ===================== HEADERS & FOOTERS =====================
 
-def set_header(doc_path, text, section_index=0, output_path=None):
+def set_header(doc_path: str, text: str, section_index: int = 0, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
     if section_index >= len(doc.sections):
-        return f"ERROR: Invalid section index."
+        return errors.err("advanced", "set_header", "Invalid section index.")
 
     section = doc.sections[section_index]
     header = section.header
@@ -101,15 +103,15 @@ def set_header(doc_path, text, section_index=0, output_path=None):
     else:
         header.add_paragraph(text)
 
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Header set: '{text}'"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Header set: '{text}'")
 
 
-def set_footer(doc_path, text, add_page_number=False, section_index=0, output_path=None):
+def set_footer(doc_path: str, text: str, add_page_number: bool = False, section_index: int = 0, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
     if section_index >= len(doc.sections):
-        return f"ERROR: Invalid section index."
+        return errors.err("advanced", "set_footer", "Invalid section index.")
 
     section = doc.sections[section_index]
     footer = section.footer
@@ -133,10 +135,10 @@ def set_footer(doc_path, text, add_page_number=False, section_index=0, output_pa
         fldChar2 = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="end"/>')
         run3._r.append(fldChar2)
 
-    return save_document(doc, doc_path, output_path) + "\nSUCCESS: Footer set."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok("Footer set.")
 
 
-def read_header(doc_path, section_index=0):
+def read_header(doc_path: str, section_index: int = 0) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -146,7 +148,7 @@ def read_header(doc_path, section_index=0):
     return f"=== HEADER (Section {section_index}) ===\n{text if text.strip() else '(empty)'}"
 
 
-def read_footer(doc_path, section_index=0):
+def read_footer(doc_path: str, section_index: int = 0) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -158,8 +160,8 @@ def read_footer(doc_path, section_index=0):
 
 # ===================== PAGE LAYOUT =====================
 
-def set_margins(doc_path, top=None, bottom=None, left=None, right=None,
-                section_index=None, output_path=None):
+def set_margins(doc_path: str, top: Optional[float] = None, bottom: Optional[float] = None, left: Optional[float] = None, right: Optional[float] = None,
+                section_index: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -169,10 +171,10 @@ def set_margins(doc_path, top=None, bottom=None, left=None, right=None,
         if bottom is not None: section.bottom_margin = Cm(bottom)
         if left is not None: section.left_margin = Cm(left)
         if right is not None: section.right_margin = Cm(right)
-    return save_document(doc, doc_path, output_path) + "\nSUCCESS: Margins set."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok("Margins set.")
 
 
-def set_orientation(doc_path, orientation, section_index=None, output_path=None):
+def set_orientation(doc_path: str, orientation: str, section_index: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -188,11 +190,11 @@ def set_orientation(doc_path, orientation, section_index=None, output_path=None)
             new_width, new_height = section.page_height, section.page_width
             section.page_width = min(new_width, new_height)
             section.page_height = max(new_width, new_height)
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Orientation set to {orientation}"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Orientation set to {orientation}")
 
 
-def set_page_size(doc_path, preset=None, width=None, height=None,
-                  section_index=None, output_path=None):
+def set_page_size(doc_path: str, preset: Optional[str] = None, width: Optional[float] = None, height: Optional[float] = None,
+                  section_index: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -206,16 +208,16 @@ def set_page_size(doc_path, preset=None, width=None, height=None,
         width, height = presets[preset.lower()]
 
     if width is None or height is None:
-        return "ERROR: Specify page size (preset or width/height in cm)."
+        return errors.err("advanced", "set_page_size", "Specify page size (preset or width/height in cm).")
 
     sections = [doc.sections[section_index]] if section_index is not None else doc.sections
     for section in sections:
         section.page_width = Cm(width)
         section.page_height = Cm(height)
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Page size set to {width}x{height}cm"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Page size set to {width}x{height}cm")
 
 
-def insert_page_break(doc_path, after_para=None, output_path=None):
+def insert_page_break(doc_path: str, after_para: Optional[int] = None, output_path: Optional[str] = None) -> str:
     from docx.enum.text import WD_BREAK
     doc, err = load_document(doc_path)
     if err:
@@ -225,10 +227,10 @@ def insert_page_break(doc_path, after_para=None, output_path=None):
         run.add_break(WD_BREAK.PAGE)
     else:
         doc.add_page_break()
-    return save_document(doc, doc_path, output_path) + "\nSUCCESS: Page break inserted."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok("Page break inserted.")
 
 
-def insert_section_break(doc_path, break_type='new_page', after_para=None, output_path=None):
+def insert_section_break(doc_path: str, break_type: str = 'new_page', after_para: Optional[int] = None, output_path: Optional[str] = None) -> str:
     from docx.enum.section import WD_SECTION_START
     doc, err = load_document(doc_path)
     if err:
@@ -242,12 +244,12 @@ def insert_section_break(doc_path, break_type='new_page', after_para=None, outpu
     }
 
     doc.add_section(type_map.get(break_type, WD_SECTION_START.NEW_PAGE))
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Section break inserted: {break_type}"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Section break inserted: {break_type}")
 
 
 # ===================== LISTS =====================
 
-def insert_list(doc_path, items, list_type='bullet', after_para=None, output_path=None):
+def insert_list(doc_path: str, items: str, list_type: str = 'bullet', after_para: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -269,15 +271,15 @@ def insert_list(doc_path, items, list_type='bullet', after_para=None, output_pat
             prefix = "•  " if list_type == 'bullet' else f"{idx+1}.  "
             doc.add_paragraph(prefix + item)
 
-    result = save_document(doc, doc_path, output_path) + f"\nSUCCESS: {list_type} list with {len(item_list)} items added."
+    result = save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"{list_type} list with {len(item_list)} items added.")
     if fallback_used:
-        result += f"\nWARNING: Style '{style}' not found in document. Used plain text markers as fallback. Run apply_style to fix."
+        result += "\n" + errors.warn("advanced", "insert_list", f"Style '{style}' not found in document. Used plain text markers as fallback. Run apply_style to fix.")
     return result
 
 
 # ===================== HYPERLINKS =====================
 
-def insert_hyperlink(doc_path, text, url, after_para=None, output_path=None):
+def insert_hyperlink(doc_path: str, text: str, url: str, after_para: Optional[int] = None, output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -288,10 +290,10 @@ def insert_hyperlink(doc_path, text, url, after_para=None, output_path=None):
     if after_para is not None and 0 <= after_para < len(doc.paragraphs):
         doc.paragraphs[after_para]._p.addnext(para._p)
 
-    return save_document(doc, doc_path, output_path) + f"\nSUCCESS: Hyperlink added: {text} -> {url}"
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok(f"Hyperlink added: {text} -> {url}")
 
 
-def _add_hyperlink(paragraph, url, text):
+def _add_hyperlink(paragraph: Any, url: str, text: str) -> None:
     part = paragraph.part
     r_id = part.relate_to(url, 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink', is_external=True)
 
@@ -303,7 +305,7 @@ def _add_hyperlink(paragraph, url, text):
 
 # ===================== TABLE OF CONTENTS =====================
 
-def insert_toc(doc_path, title="Table of Contents", output_path=None):
+def insert_toc(doc_path: str, title: str = "Table of Contents", output_path: Optional[str] = None) -> str:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -327,4 +329,4 @@ def insert_toc(doc_path, title="Table of Contents", output_path=None):
     toc_para._p.append(fld_text)
     toc_para._p.append(fld_end)
 
-    return save_document(doc, doc_path, output_path) + "\nSUCCESS: Table of Contents field added."
+    return save_document(doc, doc_path, output_path) + "\n" + errors.ok("Table of Contents field added.")

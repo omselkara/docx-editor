@@ -1,10 +1,15 @@
 """Content reading: outline, full_text, read_section, read_range, search."""
 import re
 import json
+import zipfile
+import io
+from typing import List, Dict, Any, Optional, Union
+from lxml import etree
 from docx_engine.core import load_document, NSMAP
+from docx_engine import errors
 
 # Compact formatting codes
-def _run_fmt_compact(run):
+def _run_fmt_compact(run: Any) -> str:
     parts = []
     if run.bold: parts.append("B")
     if run.italic: parts.append("I")
@@ -15,7 +20,7 @@ def _run_fmt_compact(run):
         parts.append(f"#{run.font.color.rgb}")
     return ",".join(parts) if parts else ""
 
-def _run_fmt_verbose(run):
+def _run_fmt_verbose(run: Any) -> str:
     parts = []
     if run.bold: parts.append("B")
     if run.italic: parts.append("I")
@@ -28,7 +33,7 @@ def _run_fmt_verbose(run):
     return ",".join(parts) if parts else "plain"
 
 
-def get_outline(doc_path, json_mode=False):
+def get_outline(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -46,25 +51,22 @@ def get_outline(doc_path, json_mode=False):
     if not headings:
         if json_mode:
             return {"status": "WARNING", "headings": [], "message": "No standard 'Heading' styles found."}
-        return "WARNING: No standard 'Heading' styles found in the document."
+        return errors.warn("reading", "get_outline", "No standard 'Heading' styles found.")
     if json_mode:
         return {"status": "SUCCESS", "headings": headings}
     return "=== DOCUMENT STRUCTURE ===\n" + "\n".join(lines)
 
 
-def full_text(doc_path, include_formatting=False, compact=False, max_chars=None, json_mode=False):
+def full_text(doc_path: str, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     if not include_formatting:
         # LXML fast path for massive speedup on large docs
-        import zipfile
-        import io
-        from lxml import etree
         try:
             with zipfile.ZipFile(doc_path, 'r') as z:
                 xml_data = z.read('word/document.xml')
             context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
             
             paragraphs_data = []
-            lines = [] if not json_mode else None
+            lines = []
             if not json_mode:
                 lines = ["=== FULL TEXT ==="]
             
@@ -97,6 +99,8 @@ def full_text(doc_path, include_formatting=False, compact=False, max_chars=None,
                         prefix = f"H{style.replace('Heading','').strip()}" if style.startswith('Heading') else ""
                         line = f"[P{i}]{' '+prefix if prefix else ''} {text}"
                     else:
+                        line = f"[P{i}] ({style}) {line_content if 'line_content' in locals() else text}"
+                        # Fixed line above to use 'text'
                         line = f"[P{i}] ({style}) {text}"
                     total_chars += len(line)
                     if max_chars and total_chars > max_chars:
@@ -116,7 +120,7 @@ def full_text(doc_path, include_formatting=False, compact=False, max_chars=None,
         return err
 
     paragraphs_data = []
-    lines = [] if not json_mode else None
+    lines = []
 
     if not json_mode:
         lines = ["=== FULL TEXT ==="]
@@ -185,7 +189,7 @@ def full_text(doc_path, include_formatting=False, compact=False, max_chars=None,
     return "\n".join(lines)
 
 
-def read_section(doc_path, target_heading, json_mode=False):
+def read_section(doc_path: str, target_heading: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -212,26 +216,26 @@ def read_section(doc_path, target_heading, json_mode=False):
                 content.append(f"--- SECTION: {para.text.strip()} (P{i}) ---")
                 paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text, "is_heading": True})
     if not capture:
-        msg = f"ERROR: Heading '{target_heading}' not found."
+        reason = f"Heading '{target_heading}' not found."
         if json_mode:
-            return {"status": "ERROR", "message": msg}
-        return msg
+            return {"status": "ERROR", "message": errors.err("reading", "read_section", reason)}
+        return errors.err("reading", "read_section", reason)
     if json_mode:
         return {"status": "SUCCESS", "section": target_heading, "paragraphs": paragraphs_data}
     return "\n".join(content)
 
 
-def read_range(doc_path, start_idx, end_idx, include_formatting=False, compact=False, max_chars=None, json_mode=False):
+def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
     paras = doc.paragraphs
     # Fix: valid indices are 0 to len-1
     if start_idx < 0 or end_idx > len(paras) - 1:
-        msg = f"ERROR: Invalid range. Document contains {len(paras)} paragraphs (valid indices: 0–{len(paras)-1})."
+        reason = f"Invalid range. Document contains {len(paras)} paragraphs (valid indices: 0–{len(paras)-1})."
         if json_mode:
-            return {"status": "ERROR", "message": msg}
-        return msg
+            return {"status": "ERROR", "message": errors.err("reading", "read_range", reason)}
+        return errors.err("reading", "read_range", reason)
 
     paragraphs_data = []
     lines = [f"=== PARAGRAPH RANGE [{start_idx}-{end_idx}] ==="]
@@ -271,7 +275,61 @@ def read_range(doc_path, start_idx, end_idx, include_formatting=False, compact=F
     return "\n".join(lines)
 
 
-def search_text(doc_path, query, context_lines=1, compact=False, json_mode=False):
+def search_text(doc_path: str, query: str, context_lines: int = 1, compact: bool = False, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+    # LXML fast path for search
+    try:
+        with zipfile.ZipFile(doc_path, 'r') as z:
+            xml_data = z.read('word/document.xml')
+        context = etree.iterparse(io.BytesIO(xml_data), events=('end',), tag='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
+        
+        all_texts = []
+        for _, elem in context:
+            texts = elem.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
+            p_text = "".join([t.text for t in texts if t.text])
+            all_texts.append(p_text)
+            elem.clear()
+            
+        matches_data = []
+        results = []
+        for i, text in enumerate(all_texts):
+            if re.search(query, text, re.IGNORECASE):
+                ctx_start = max(0, i - context_lines)
+                ctx_end = min(len(all_texts) - 1, i + context_lines)
+                block = []
+                context_before = []
+                context_after = []
+                for j in range(ctx_start, ctx_end + 1):
+                    marker = ">>>" if j == i else "   "
+                    block.append(f"{marker} [P{j}] {all_texts[j]}")
+                    if j < i:
+                        context_before.append({"index": j, "text": all_texts[j]})
+                    elif j > i:
+                        context_after.append({"index": j, "text": all_texts[j]})
+                matches_data.append({
+                    "para_index": i,
+                    "text": text,
+                    "context_before": context_before,
+                    "context_after": context_after,
+                })
+                if not compact:
+                    results.append("\n".join(block))
+                else:
+                    results.append(f"[P{i}] {text}")
+
+        if not matches_data:
+            if json_mode:
+                return {"status": "SUCCESS", "query": query, "match_count": 0, "matches": []}
+            return f"'{query}' not found."
+
+        if json_mode:
+            return {"status": "SUCCESS", "query": query, "match_count": len(matches_data), "matches": matches_data}
+
+        sep = "\n---\n" if not compact else "\n"
+        return (f"=== SEARCH: '{query}' ({len(results)} matches) ===\n\n"
+                + sep.join(results))
+    except Exception:
+        pass # Fall back to python-docx
+
     doc, err = load_document(doc_path)
     if err:
         return err

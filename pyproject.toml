@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "docx-editor"
+version = "2.0.0"
+description = "LLM-optimized DOCX manipulation library for AI agent workflows"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "python-docx>=1.1.0",
+    "lxml>=4.9.0",
+    "Pillow>=10.0",
+    "pdf2image>=1.16",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.5",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+docx-agent = "scripts.docx_agent:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scripts*"]
+
+# ── Ruff (linter + formatter) ─────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default argument
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["docx_engine"]
+
+# ── mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+# ── pytest ───────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*", "bench_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["scripts/docx_engine"]
+omit = ["tests/*", "scripts/docx_agent.py"]
+
+[tool.coverage.report]
+show_missing = true
+# Current: 33% (editing 84%, formatting 86%, batch 71%, tables 67%)
+# Uncovered: rendering/advanced/extended require LibreOffice, skip for now
+fail_under = 33
