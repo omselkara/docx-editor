@@ -33,7 +33,7 @@ def _run_fmt_verbose(run: Any) -> str:
     return ",".join(parts) if parts else "plain"
 
 
-def get_outline(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+def get_outline(doc_path: str, max_depth: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -44,6 +44,8 @@ def get_outline(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
             level_str = para.style.name.replace('Heading ', '').strip()
             if level_str.isdigit():
                 level = int(level_str)
+                if max_depth and level > max_depth:
+                    continue
                 indent = "  " * (level - 1)
                 text = para.text.strip()
                 headings.append({"index": i, "level": level, "text": text})
@@ -57,8 +59,11 @@ def get_outline(doc_path: str, json_mode: bool = False) -> Union[str, Dict[str, 
     return "=== DOCUMENT STRUCTURE ===\n" + "\n".join(lines)
 
 
-def full_text(doc_path: str, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
-    if not include_formatting:
+def full_text(doc_path: str, include_formatting: bool = False, compact: bool = False, strip_format: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+    # If strip_format is on, we ignore include_formatting
+    actual_include_formatting = include_formatting and not strip_format
+
+    if not actual_include_formatting:
         # LXML fast path for massive speedup on large docs
         try:
             with zipfile.ZipFile(doc_path, 'r') as z:
@@ -96,12 +101,17 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
                     paragraphs_data.append({"index": i, "style": style, "text": text})
                 else:
                     if compact:
-                        prefix = f"H{style.replace('Heading','').strip()}" if style.startswith('Heading') else ""
-                        line = f"[P{i}]{' '+prefix if prefix else ''} {text}"
+                        prefix = ""
+                        if not strip_format:
+                            h_level = style.replace('Heading','').strip()
+                            prefix = f"H{h_level} " if h_level.isdigit() else ""
+                        line = f"[P{i}]{' ' + prefix if prefix else ' '}{text}"
                     else:
-                        line = f"[P{i}] ({style}) {line_content if 'line_content' in locals() else text}"
-                        # Fixed line above to use 'text'
-                        line = f"[P{i}] ({style}) {text}"
+                        if strip_format:
+                            line = f"[P{i}] {text}"
+                        else:
+                            line = f"[P{i}] ({style}) {text}"
+                            
                     total_chars += len(line)
                     if max_chars and total_chars > max_chars:
                         lines.append(f"[TRUNCATED at {max_chars} chars; use read_range --start {i} to continue]")
@@ -136,11 +146,11 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
         if compact and not text.strip():
             continue
 
-        if not compact and not json_mode and not text.strip() and not include_formatting:
+        if not compact and not json_mode and not text.strip() and not actual_include_formatting:
             lines.append(f"[P{i}] ({style}) <empty>")
             continue
 
-        if include_formatting:
+        if actual_include_formatting:
             if compact:
                 runs_info = []
                 for r in para.runs:
@@ -150,39 +160,36 @@ def full_text(doc_path: str, include_formatting: bool = False, compact: bool = F
                     else:
                         runs_info.append(r.text)
                 line_content = "".join(runs_info)
+                prefix = f"H{style.replace('Heading','').strip()}" if style.startswith('Heading') else ""
+                line = f"[P{i}]{' '+prefix if prefix else ''} {line_content}"
             else:
                 runs_info = []
                 for r in para.runs:
-                    fmt = _run_fmt_verbose(r)
-                    runs_info.append(f'[{fmt}]"{r.text}"')
-                line_content = "".join(runs_info)
-
-            if json_mode:
-                paragraphs_data.append({"index": i, "style": style, "runs": line_content})
-            else:
+                    runs_info.append(f"({_run_fmt_verbose(r)})'{r.text}'")
+                line_content = " | ".join(runs_info)
                 line = f"[P{i}] ({style}) {line_content}"
-                total_chars += len(line)
-                if max_chars and total_chars > max_chars:
-                    lines.append(f"[TRUNCATED at {max_chars} chars; use read_range --start {i} to continue]")
-                    truncated = True
-                    break
-                lines.append(line)
         else:
-            if json_mode:
-                paragraphs_data.append({"index": i, "style": style, "text": text})
+            if compact:
+                prefix = ""
+                if not strip_format:
+                    h_level = style.replace('Heading','').strip()
+                    prefix = f"H{h_level} " if h_level.isdigit() else ""
+                line = f"[P{i}]{' ' + prefix if prefix else ' '}{text}"
             else:
-                # Compact: don't print heading style name separately as it's redundant
-                if compact:
-                    prefix = f"H{style.replace('Heading ','').strip()}" if style.startswith('Heading') else ""
-                    line = f"[P{i}]{' '+prefix if prefix else ''} {text}"
+                if strip_format:
+                    line = f"[P{i}] {text}"
                 else:
                     line = f"[P{i}] ({style}) {text}"
-                total_chars += len(line)
-                if max_chars and total_chars > max_chars:
-                    lines.append(f"[TRUNCATED at {max_chars} chars; use read_range --start {i} to continue]")
-                    truncated = True
-                    break
-                lines.append(line)
+
+        if json_mode:
+            paragraphs_data.append({"index": i, "style": style, "text": text})
+        else:
+            total_chars += len(line)
+            if max_chars and total_chars > max_chars:
+                lines.append(f"[TRUNCATED at {max_chars} chars]")
+                truncated = True
+                break
+            lines.append(line)
 
     if json_mode:
         return {"status": "SUCCESS", "paragraphs": paragraphs_data, "truncated": truncated}
@@ -198,21 +205,26 @@ def read_section(doc_path: str, target_heading: str, json_mode: bool = False) ->
     capture = False
     target_level = 0
     for i, para in enumerate(doc.paragraphs):
-        is_heading = para.style.name.startswith('Heading')
-        current_level = 99
-        if is_heading:
+        if para.style.name.startswith('Heading') and target_heading.lower() in para.text.lower():
+            capture = True
             level_str = para.style.name.replace('Heading ', '').strip()
-            if level_str.isdigit():
-                current_level = int(level_str)
+            target_level = int(level_str) if level_str.isdigit() else 0
+            content.append(f"--- SECTION: {para.text.strip()} (P{i}) ---")
+            paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text, "is_heading": True})
+            continue
         if capture:
-            if is_heading and current_level <= target_level:
-                break
-            content.append(f"[P{i}] ({para.style.name}) {para.text}")
+            # Stop if we hit another heading of same or higher level
+            if para.style.name.startswith('Heading'):
+                level_str = para.style.name.replace('Heading ', '').strip()
+                current_level = int(level_str) if level_str.isdigit() else 0
+                if current_level <= target_level and current_level > 0:
+                    break
+            
+            content.append(f"[P{i}] {para.text}")
             paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text})
-        else:
-            if is_heading and target_heading.lower() in para.text.lower():
-                capture = True
-                target_level = current_level
+            
+            # Optional: handle nested headings
+            if para.style.name.startswith('Heading'):
                 content.append(f"--- SECTION: {para.text.strip()} (P{i}) ---")
                 paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text, "is_heading": True})
     if not capture:
@@ -225,7 +237,7 @@ def read_section(doc_path: str, target_heading: str, json_mode: bool = False) ->
     return "\n".join(content)
 
 
-def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: bool = False, compact: bool = False, max_chars: Optional[int] = None, json_mode: bool = False) -> Union[str, Dict[str, Any]]:   
     doc, err = load_document(doc_path)
     if err:
         return err
@@ -240,38 +252,29 @@ def read_range(doc_path: str, start_idx: int, end_idx: int, include_formatting: 
     paragraphs_data = []
     lines = [f"=== PARAGRAPH RANGE [{start_idx}-{end_idx}] ==="]
     total_chars = 0
-    truncated = False
-
     for i in range(start_idx, end_idx + 1):
         para = paras[i]
+        style = para.style.name
+        text = para.text
         if include_formatting:
-            if compact:
-                runs_info = []
-                for r in para.runs:
-                    fmt = _run_fmt_compact(r)
-                    runs_info.append(f"[{fmt}]{r.text}" if fmt else r.text)
-                line_content = "".join(runs_info)
-            else:
-                runs_info = []
-                for r in para.runs:
-                    fmt = _run_fmt_verbose(r)
-                    runs_info.append(f'[{fmt}]"{r.text}"')
-                line_content = "".join(runs_info)
-            line = f"[P{i}] ({para.style.name}) {line_content}"
-            paragraphs_data.append({"index": i, "style": para.style.name, "runs": line_content})
+            runs_info = []
+            for r in para.runs:
+                runs_info.append(f"({_run_fmt_verbose(r)})'{r.text}'")
+            line = f"[P{i}] ({style}) " + " | ".join(runs_info)
         else:
-            line = f"[P{i}] ({para.style.name}) {para.text}"
-            paragraphs_data.append({"index": i, "style": para.style.name, "text": para.text})
-
-        total_chars += len(line)
-        if max_chars and total_chars > max_chars:
-            lines.append(f"[TRUNCATED at {max_chars} chars; use --start {i} to continue]")
-            truncated = True
-            break
-        lines.append(line)
+            line = f"[P{i}] ({style}) {text}"
+        
+        if json_mode:
+            paragraphs_data.append({"index": i, "style": style, "text": text})
+        else:
+            total_chars += len(line)
+            if max_chars and total_chars > max_chars:
+                lines.append(f"[TRUNCATED at {max_chars} chars]")
+                break
+            lines.append(line)
 
     if json_mode:
-        return {"status": "SUCCESS", "range": [start_idx, end_idx], "paragraphs": paragraphs_data, "truncated": truncated}
+        return {"status": "SUCCESS", "paragraphs": paragraphs_data}
     return "\n".join(lines)
 
 
@@ -288,7 +291,7 @@ def search_text(doc_path: str, query: str, context_lines: int = 1, compact: bool
             p_text = "".join([t.text for t in texts if t.text])
             all_texts.append(p_text)
             elem.clear()
-            
+
         matches_data = []
         results = []
         for i, text in enumerate(all_texts):
@@ -333,7 +336,7 @@ def search_text(doc_path: str, query: str, context_lines: int = 1, compact: bool
     doc, err = load_document(doc_path)
     if err:
         return err
-
+    
     matches_data = []
     results = []
     paras = doc.paragraphs

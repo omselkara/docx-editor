@@ -96,11 +96,13 @@ def main():
     p.add_argument("--keywords"); p.add_argument("--category"); p.add_argument("--output")
 
     # ===== READING =====
-    sub.add_parser("outline", help="Show heading hierarchy with [P_index] labels.")
+    p = sub.add_parser("outline", help="Show heading hierarchy with [P_index] labels.")
+    p.add_argument("--max-depth", type=int, help="Maximum heading level to display (e.g. 2).")
 
     p = sub.add_parser("full_text", help="Read entire document text with paragraph indices.")
     p.add_argument("--formatting", action="store_true", help="Include run-level formatting detail.")
     p.add_argument("--compact", action="store_true", help="Skip empty paragraphs; short format codes.")
+    p.add_argument("--strip-format", action="store_true", help="Remove all formatting codes, only return text.")
     p.add_argument("--max-chars", type=int, default=None, dest="max_chars", help="Truncate output at N characters.")
 
     p = sub.add_parser("read_section", help="Read all paragraphs under a specific heading.")
@@ -111,6 +113,7 @@ def main():
     p.add_argument("--end", type=int, required=True)
     p.add_argument("--formatting", action="store_true")
     p.add_argument("--compact", action="store_true")
+    p.add_argument("--strip-format", action="store_true")
     p.add_argument("--max-chars", type=int, default=None, dest="max_chars")
 
     p = sub.add_parser("search", help="Search for text (regex-capable) with context lines.")
@@ -409,18 +412,18 @@ def main():
 
         # READING
         elif action == "outline":
-            result = reading.get_outline(file_path, json_mode=use_json)
+            result = reading.get_outline(file_path, max_depth=args.max_depth, json_mode=use_json)
         elif action == "full_text":
             result = reading.full_text(file_path, include_formatting=args.formatting,
-                                       compact=args.compact, max_chars=args.max_chars,
-                                       json_mode=use_json)
+                                       compact=args.compact, strip_format=args.strip_format,
+                                       max_chars=args.max_chars, json_mode=use_json)
         elif action == "read_section":
             result = reading.read_section(file_path, args.heading, json_mode=use_json)
         elif action == "read_range":
             result = reading.read_range(file_path, args.start, args.end,
                                         include_formatting=args.formatting,
-                                        compact=args.compact, max_chars=args.max_chars,
-                                        json_mode=use_json)
+                                        compact=args.compact, strip_format=args.strip_format,
+                                        max_chars=args.max_chars, json_mode=use_json)
         elif action == "search":
             result = reading.search_text(file_path, args.query, context_lines=args.context,
                                          compact=args.compact, json_mode=use_json)
