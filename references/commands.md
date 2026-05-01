@@ -119,10 +119,10 @@
 
 | Command | Example |
 |---|---|
-| `list_template_vars` | `python scripts/docx_agent.py template.docx list_template_vars` |
-| `from_template` | `python scripts/docx_agent.py template.docx from_template --template tmpl.docx --output filled.docx --vars "name=Alice,date=2024-01-01"` |
+| `list_template_vars` | `python scripts/docx_agent.py doc.docx list_template_vars` |
+| `from_template` | `python scripts/docx_agent.py doc.docx from_template --output out.docx --vars "name=Alice,date=2024-01-01"` |
 
-### 11. Rendering
+### 11. Visual Rendering
 
 | Command | Example |
 |---|---|

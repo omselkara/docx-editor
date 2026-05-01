@@ -23,6 +23,23 @@
 4. read_table --index 0
 ```
 
+### Templates
+```
+1. list_template_vars
+2. # identify keys like {{name}}, {{date}}
+3. from_template --output final.docx --vars "name=John Doe,date=2024-05-01"
+4. info --json # verify page count and metadata
+```
+
+### Batch & Recovery
+```
+1. # create a JSON plan (plan.json)
+2. batch --commands plan.json --dry-run
+3. batch --commands plan.json
+4. # if failure occurs (e.g., on_error: stop)
+5. undo # restore the auto-backup
+```
+
 ### Batch
 ```json
 {

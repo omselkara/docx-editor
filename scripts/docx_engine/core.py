@@ -2,9 +2,11 @@
 import os
 import json
 import logging
+import zipfile
 from typing import Tuple, Optional, Any, Dict, Union
 from docx import Document
 from docx.document import Document as DocumentType
+from docx.opc.exceptions import PackageNotFoundError
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.shared import Inches, Pt, Cm, Emu
 from docx.oxml.ns import qn
@@ -42,6 +44,10 @@ def load_document(doc_path: str) -> Tuple[Optional[DocumentType], Optional[str]]
     try:
         doc = Document(doc_path)
         return doc, None
+    except PackageNotFoundError:
+        return None, errors.err("core", "load_document", f"File '{doc_path}' is not a valid DOCX or is encrypted.")
+    except zipfile.BadZipFile:
+        return None, errors.err("core", "load_document", f"File '{doc_path}' is corrupted (not a valid ZIP).")
     except Exception as e:
         return None, errors.err("core", "load_document", f"Could not open file: {e}")
 
