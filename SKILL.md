@@ -34,7 +34,7 @@ Entry: `python scripts/docx_agent.py <file> <command> [options]`
 | `create_table --headers A,B,C` | Create a new table |
 | `read_table --table-index 0` | Read table as markdown |
 | `modify_cell --table-index 0 --row 1 --col 2 --text X` | Edit a cell |
-| `batch_execute --commands file.json` | Atomic multi-op batch |
+| `batch --commands file.json` | Atomic multi-op batch (supports `create`, `info`, `set_metadata` etc.) |
 | `diff --doc2 other.docx` | LCS paragraph-level diff |
 | `undo` | Restore last backup |
 

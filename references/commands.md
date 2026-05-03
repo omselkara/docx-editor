@@ -136,6 +136,16 @@
 | `batch --dry-run` | `python scripts/docx_agent.py doc.docx batch --commands edits.json --dry-run` |
 | `diff` | `python scripts/docx_agent.py v1.docx diff --compare v2.docx --json` |
 
+**Supported Batch Actions:**
+- **Lifecycle:** `create`, `info`, `set_metadata`
+- **Editing:** `insert_paragraph`, `insert_heading`, `delete_paragraphs`, `replace_text`, `append_text`
+- **Formatting:** `format_text`, `format_paragraph`, `apply_style`
+- **Tables:** `create_table`, `modify_cell`, `add_row`, `delete_row`, `add_column`, `delete_column`, `merge_cells`, `format_table_cell`
+- **Annotations:** `add_comment`, `delete_comment`, `accept_all_changes`, `reject_all_changes`, `add_bookmark`, `add_footnote`
+- **Advanced:** `insert_image`, `set_header`, `set_footer`, `set_margins`, `set_orientation`, `set_page_size`, `insert_page_break`, `insert_section_break`, `insert_list`, `insert_hyperlink`, `insert_toc`
+- **Smart Features:** `clone_format`, `from_template`
+- **Extended:** `add_watermark`, `remove_watermark`, `set_line_numbering`
+
 ### 13. Backup & Undo
 
 | Command | Example |

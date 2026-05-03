@@ -152,6 +152,7 @@ def _build_dispatch() -> Dict[str, Any]:
     from docx_engine import (
         advanced,
         annotations,
+        core,
         editing,
         extended,
         formatting,
@@ -160,6 +161,10 @@ def _build_dispatch() -> Dict[str, Any]:
     )
 
     return {
+        # Lifecycle
+        "create": core.create_document,
+        "info": core.get_info,
+        "set_metadata": core.set_metadata,
         # Editing
         "insert_paragraph": editing.insert_paragraph,
         "insert_heading": editing.insert_heading,

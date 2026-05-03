@@ -45,6 +45,8 @@
 {
   "on_error": "stop",
   "commands": [
+    {"action": "create"},
+    {"action": "set_metadata", "args": {"title": "New Doc", "author": "Agent"}},
     {"action": "insert_heading", "args": {"text": "Title", "level": 1}},
     {"action": "insert_paragraph", "args": {"text": "Text...", "after-heading": "Title"}},
     {"action": "create_table", "args": {"headers": "A,B", "rows-data": "1,2"}}
